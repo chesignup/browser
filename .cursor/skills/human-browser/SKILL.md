@@ -110,6 +110,115 @@ human-browser click "a"
 human-browser stop
 ```
 
+## Data extraction patterns
+
+### Extract structured data from listings
+
+Create a JavaScript extraction file (e.g., `extract.js`):
+
+```javascript
+const items = document.querySelectorAll('.listing-item');
+const results = [];
+
+items.forEach(item => {
+    const data = {
+        title: item.querySelector('.title')?.innerText,
+        price: item.querySelector('.price')?.innerText,
+        link: item.querySelector('a')?.href
+    };
+    
+    if (data.link) results.push(data);
+});
+
+JSON.stringify(results, null, 2);
+```
+
+Then extract from Python:
+
+```python
+result = subprocess.run('human-browser eval "$(cat extract.js)" 2>/dev/null',
+                       shell=True, capture_output=True, text=True)
+data = json.loads(result.stdout)
+```
+
+### Detect when to stop pagination
+
+```python
+# Check if results are empty
+if len(listings) == 0:
+    break
+
+# Or check for "no results" message
+no_results = subprocess.run(
+    'human-browser eval "document.body.innerText.includes(\'No results\')" 2>/dev/null',
+    shell=True, capture_output=True, text=True
+).stdout.strip()
+if no_results == "true":
+    break
+```
+
+### Deduplicate across pages
+
+```python
+seen_links = set()
+unique_items = []
+
+for item in all_items:
+    link = item.get('link')
+    if link and link not in seen_links:
+        seen_links.add(link)
+        unique_items.append(item)
+```
+
+## Pagination patterns
+
+Many sites use pagination or infinite scroll. Handle them differently:
+
+### URL-based pagination (recommended)
+
+Navigate to each page directly via URL parameters:
+
+```python
+for page in range(1, 10):
+    url = f"https://example.com/search?query=foo&page={page}"
+    subprocess.run(f'human-browser nav "{url}" 2>/dev/null', shell=True)
+    time.sleep(3)
+    
+    # Extract data
+    result = subprocess.run('human-browser eval "$(cat extract.js)" 2>/dev/null',
+                           shell=True, capture_output=True, text=True)
+    
+    listings = json.loads(result.stdout)
+    if len(listings) == 0:
+        break  # No more pages
+```
+
+### Infinite scroll (less reliable)
+
+For sites that load content on scroll:
+
+```python
+for i in range(50):  # Scroll many times
+    subprocess.run('human-browser eval "window.scrollTo(0, document.body.scrollHeight)" 2>/dev/null', 
+                  shell=True)
+    time.sleep(1.5)
+    
+    # Check if more content loaded
+    count = subprocess.run('human-browser eval "document.querySelectorAll(\'.item\').length" 2>/dev/null',
+                          shell=True, capture_output=True, text=True).stdout.strip()
+```
+
+### Button-based pagination
+
+Click "Next" buttons between pages:
+
+```bash
+# Find and click next button
+human-browser eval "document.querySelector('[aria-label=\"Next\"]')?.click()"
+```
+
+**Best practice:** Prefer URL-based pagination when possible. It's faster, more reliable, and easier to resume.
+
 ## Agent workflow
 
 1. `human-browser start <url>`
@@ -117,7 +226,8 @@ human-browser stop
 3. Verify expected state with `eval`, `snap`, or `shot`
 4. Interact with `type`, `key`, `click`, or `clickxy`
 5. Re-verify after each meaningful action
-6. `human-browser stop` when finished
+6. For multi-page scraping, use URL pagination (see above)
+7. `human-browser stop` when finished
 
 ## Constants
 
@@ -143,3 +253,80 @@ human-browser stop
 - CDP client: `human_browser/cdp.py`
 - Backends: `human_browser/backends.py`
 - tmux input: `human_browser/tmux_input.py`
+
+## Complete scraping example
+
+Example: scrape all pages of a product listing site.
+
+```python
+import subprocess, json, time, csv
+
+def scrape_with_pagination():
+    base_url = "https://example.com/products?category=electronics"
+    all_products = []
+    
+    # Start browser
+    subprocess.run('human-browser start https://example.com 2>/dev/null', shell=True)
+    time.sleep(3)
+    
+    # Scrape pages 1-10
+    for page in range(1, 11):
+        url = f"{base_url}&page={page}"
+        print(f"Scraping page {page}...")
+        
+        # Navigate
+        subprocess.run(f'human-browser nav "{url}" 2>/dev/null', shell=True)
+        time.sleep(3)
+        
+        # Optional: scroll to trigger lazy loading
+        for _ in range(3):
+            subprocess.run('human-browser eval "window.scrollTo(0, document.body.scrollHeight)" 2>/dev/null', 
+                          shell=True)
+            time.sleep(1)
+        
+        # Extract with JavaScript
+        js = '''
+        Array.from(document.querySelectorAll('.product')).map(el => ({
+            name: el.querySelector('.name')?.innerText,
+            price: el.querySelector('.price')?.innerText,
+            link: el.querySelector('a')?.href
+        })).filter(p => p.link)
+        '''
+        
+        result = subprocess.run(f'human-browser eval {json.dumps(js)} 2>/dev/null',
+                               shell=True, capture_output=True, text=True)
+        
+        try:
+            products = json.loads(result.stdout)
+            print(f"  Found {len(products)} products")
+            
+            if len(products) == 0:
+                break
+            
+            all_products.extend(products)
+        except:
+            print(f"  Failed to parse")
+            break
+    
+    # Deduplicate
+    unique_products = []
+    seen = set()
+    for p in all_products:
+        if p['link'] not in seen:
+            seen.add(p['link'])
+            unique_products.append(p)
+    
+    # Save to CSV
+    with open('products.csv', 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=['name', 'price', 'link'])
+        writer.writeheader()
+        writer.writerows(unique_products)
+    
+    print(f"Total unique products: {len(unique_products)}")
+    
+    # Cleanup
+    subprocess.run('human-browser stop 2>/dev/null', shell=True)
+
+if __name__ == "__main__":
+    scrape_with_pagination()
+```
