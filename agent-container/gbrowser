@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# gbrowser - drive the QEMU guest's Chrome from inside the agent container.
+# Reaches the guest's private CDP (127.0.0.1:9222 in the guest) via an SSH tunnel
+# over Tailscale, then uses the human_browser CLI. Mirrors 'qbrowser ctl' on the host.
+set -euo pipefail
+
+GUEST_HOST="${GUEST_HOST:-100.92.122.70}"   # guest Tailscale IP or MagicDNS name
+GUEST_USER="${GUEST_USER:-vmuser}"
+GUEST_KEY="${GUEST_KEY:-/root/.ssh/guest_key}"
+GUEST_CDP="${GUEST_CDP:-9222}"              # chrome debug port inside guest
+CDP_PORT="${CDP_PORT:-11222}"              # local tunneled port in this container
+NOVNC_PORT="${NOVNC_PORT:-6080}"
+VIEWER_PORT="${VIEWER_PORT:-6081}"
+PY="${PYTHON_BIN:-python3}"
+
+SSH_OPTS=(-i "${GUEST_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=8)
+FWD="127.0.0.1:${CDP_PORT}:127.0.0.1:${GUEST_CDP}"
+
+tunnel_up() {
+  pgrep -f "ssh.*-L ${FWD}" >/dev/null 2>&1 && return 0
+  ssh "${SSH_OPTS[@]}" -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 \
+    -N -f -L "${FWD}" "${GUEST_USER}@${GUEST_HOST}"
+}
+cdp_alive() { curl -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1; }
+attach()   { "${PY}" -m human_browser.cli attach --port "${CDP_PORT}" >/dev/null; }
+
+cmd="${1:-}"; shift || true
+case "${cmd}" in
+  tunnel)
+    case "${1:-up}" in
+      up)     tunnel_up && echo "tunnel up (127.0.0.1:${CDP_PORT} -> ${GUEST_HOST}:${GUEST_CDP})" ;;
+      down)   pkill -f "ssh.*-L ${FWD}" 2>/dev/null || true; echo "tunnel down" ;;
+      status) cdp_alive && echo alive || echo down ;;
+    esac ;;
+  ctl)
+    [[ $# -ge 1 ]] || { echo "usage: gbrowser ctl <verb> [args]"; exit 1; }
+    tunnel_up || { echo "cannot reach guest ${GUEST_HOST} (is Tailscale up? run: tailscale up)"; exit 1; }
+    for _ in $(seq 1 15); do cdp_alive && break; sleep 1; done
+    cdp_alive || { echo "guest CDP not reachable via ${GUEST_HOST}"; exit 1; }
+    "${PY}" -m human_browser.cli status >/dev/null 2>&1 || attach
+    exec "${PY}" -m human_browser.cli "$@" ;;
+  url)
+    echo "mobile viewer: http://${GUEST_HOST}:${VIEWER_PORT}/"
+    echo "noVNC:         http://${GUEST_HOST}:${NOVNC_PORT}/vnc.html" ;;
+  ssh)
+    exec ssh "${SSH_OPTS[@]}" "${GUEST_USER}@${GUEST_HOST}" "$@" ;;
+  *)
+    cat >&2 <<EOF
+gbrowser - control the QEMU guest Chrome from this container
+  gbrowser ctl <verb> [args]   nav|list|click|clickxy|hover|hoverxy|type|key|eval|html|snap|shot
+  gbrowser tunnel {up|down|status}
+  gbrowser url                 print viewer URLs (for captcha / human-in-the-loop)
+  gbrowser ssh [cmd]           ssh into the guest
+Env: GUEST_HOST=${GUEST_HOST}
+EOF
+    exit 1 ;;
+esac

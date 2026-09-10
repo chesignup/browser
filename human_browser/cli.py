@@ -43,6 +43,23 @@ async def _with_cdp(state: SessionState, fn):
         await client.close()
 
 
+def cmd_attach(args: argparse.Namespace) -> None:
+    """Attach to an already-running Chrome CDP endpoint (e.g. a VM tunnel)."""
+    state = SessionState(backend="playwright", cdp_port=args.port)
+    state.save()
+    client = CDPClient(args.port)
+    print(
+        json.dumps(
+            {
+                "attached": True,
+                "cdp_port": args.port,
+                "cdp_alive": client.is_alive(),
+            },
+            indent=2,
+        )
+    )
+
+
 def cmd_start(args: argparse.Namespace) -> None:
     try:
         backend = choose_backend(args.backend)
@@ -163,13 +180,12 @@ def cmd_type(args: argparse.Namespace) -> None:
         CarbonylBackend().type_text(state, args.text)
         print(f"Typed via tmux: {args.text}")
         return
-    from playwright.sync_api import sync_playwright
 
-    with sync_playwright() as playwright:
-        browser = playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{state.cdp_port}")
-        page = browser.contexts[0].pages[0]
-        page.keyboard.type(args.text)
-        print(f"Typed via Playwright: {args.text}")
+    async def action(client, _target):
+        await client.type_text(args.text)
+        print(f"Typed via CDP: {args.text}")
+
+    run_async(_with_cdp(state, action))
 
 
 def cmd_key(args: argparse.Namespace) -> None:
@@ -178,13 +194,12 @@ def cmd_key(args: argparse.Namespace) -> None:
         CarbonylBackend().press_key(state, args.key)
         print(f"Sent key via tmux: {args.key}")
         return
-    from playwright.sync_api import sync_playwright
 
-    with sync_playwright() as playwright:
-        browser = playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{state.cdp_port}")
-        page = browser.contexts[0].pages[0]
-        page.keyboard.press(args.key)
-        print(f"Sent key via Playwright: {args.key}")
+    async def action(client, _target):
+        await client.press_key(args.key)
+        print(f"Sent key via CDP: {args.key}")
+
+    run_async(_with_cdp(state, action))
 
 
 def cmd_clickxy(args: argparse.Namespace) -> None:
@@ -193,13 +208,12 @@ def cmd_clickxy(args: argparse.Namespace) -> None:
         CarbonylBackend().click_xy(state, args.x, args.y)
         print(f"Clicked via tmux mouse at ({args.x}, {args.y})")
         return
-    from playwright.sync_api import sync_playwright
 
-    with sync_playwright() as playwright:
-        browser = playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{state.cdp_port}")
-        page = browser.contexts[0].pages[0]
-        page.mouse.click(args.x, args.y)
-        print(f"Clicked via Playwright at ({args.x}, {args.y})")
+    async def action(client, _target):
+        await client.click_xy(args.x, args.y)
+        print(f"Clicked via CDP at ({args.x}, {args.y})")
+
+    run_async(_with_cdp(state, action))
 
 
 def cmd_click(args: argparse.Namespace) -> None:
@@ -211,15 +225,29 @@ def cmd_click(args: argparse.Namespace) -> None:
             CarbonylBackend().click_xy(state, int(x), int(y))
             print(f"Clicked {args.selector} via tmux mouse at ({int(x)}, {int(y)})")
         else:
-            from playwright.sync_api import sync_playwright
+            await client.click_xy(x, y)
+            print(f"Clicked {args.selector} via CDP at ({x:.0f}, {y:.0f})")
 
-            with sync_playwright() as playwright:
-                browser = playwright.chromium.connect_over_cdp(
-                    f"http://127.0.0.1:{state.cdp_port}"
-                )
-                page = browser.contexts[0].pages[0]
-                page.mouse.click(x, y)
-                print(f"Clicked {args.selector} via Playwright at ({x}, {y})")
+    run_async(_with_cdp(state, action))
+
+
+def cmd_hoverxy(args: argparse.Namespace) -> None:
+    state = _load_state()
+
+    async def action(client, _target):
+        await client.move_mouse(args.x, args.y)
+        print(f"Hover via CDP at ({args.x}, {args.y})")
+
+    run_async(_with_cdp(state, action))
+
+
+def cmd_hover(args: argparse.Namespace) -> None:
+    state = _load_state()
+
+    async def action(client, _target):
+        x, y = await client.element_center(args.selector)
+        await client.move_mouse(x, y)
+        print(f"Hover {args.selector} via CDP at ({x:.0f}, {y:.0f})")
 
     run_async(_with_cdp(state, action))
 
@@ -235,6 +263,10 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("url", default="https://example.com", nargs="?")
     start.add_argument("--backend", choices=["playwright", "carbonyl"])
     start.set_defaults(func=cmd_start)
+
+    attach = sub.add_parser("attach", help="Attach to an existing Chrome CDP endpoint")
+    attach.add_argument("--port", type=int, default=1112, help="CDP port on 127.0.0.1")
+    attach.set_defaults(func=cmd_attach)
 
     sub.add_parser("status", help="Show session status").set_defaults(func=cmd_status)
     sub.add_parser("stop", help="Stop the active session").set_defaults(func=cmd_stop)
@@ -274,6 +306,15 @@ def build_parser() -> argparse.ArgumentParser:
     click = sub.add_parser("click", help="Click selector (coords from CDP, input via mouse)")
     click.add_argument("selector")
     click.set_defaults(func=cmd_click)
+
+    hoverxy = sub.add_parser("hoverxy", help="Move mouse to coordinates (hover)")
+    hoverxy.add_argument("x", type=int)
+    hoverxy.add_argument("y", type=int)
+    hoverxy.set_defaults(func=cmd_hoverxy)
+
+    hover = sub.add_parser("hover", help="Hover over a selector")
+    hover.add_argument("selector")
+    hover.set_defaults(func=cmd_hover)
 
     return parser
 

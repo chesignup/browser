@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Expose the local MCP server publicly over HTTPS (port 443) via Tailscale Funnel,
+# which ChatGPT requires (public HTTPS, trusted cert, standard port). Run after
+# 'tailscale up'. Idempotent-ish; prints the public /mcp URL.
+set -euo pipefail
+PORT="${MCP_PORT:-8000}"
+
+tailscale status >/dev/null 2>&1 || { echo "Run 'tailscale up' first."; exit 1; }
+
+# Try the modern one-liner, then fall back to serve+funnel.
+if ! tailscale funnel --bg "${PORT}" 2>/dev/null; then
+  if ! tailscale funnel --bg "http://127.0.0.1:${PORT}" 2>/dev/null; then
+    tailscale serve --bg --https=443 "http://127.0.0.1:${PORT}"
+    tailscale funnel --bg 443
+  fi
+fi
+
+echo "--- funnel status ---"
+tailscale funnel status || tailscale serve status || true
+
+name="$(tailscale status --json | jq -r '.Self.DNSName' | sed 's/\.$//')"
+echo
+echo "Public MCP endpoint (add this in ChatGPT):"
+echo "   https://${name}/mcp"
+echo "Auth: Token  ->  $(cat /run/mcp_token 2>/dev/null || echo '(MCP_NO_AUTH set / none)')"

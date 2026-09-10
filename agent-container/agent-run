@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Runs inside the tmux 'agent' session and keeps the Cursor CLI agent running,
+# configured with the human-browser MCP + gbrowser tool. SSH logins land here.
+export PATH=/root/.local/bin:$PATH
+export GUEST_HOST="${GUEST_HOST:-100.92.122.70}"
+export AGENT_MODEL="${AGENT_MODEL:-gpt-5.4-mini}"   # cheap default; change via env or /model
+mkdir -p /root/work && cd /root/work   # stable workspace for the agent
+
+banner() {
+  clear 2>/dev/null || true
+  echo "==================== cursor agent container ===================="
+  echo " Guest browser host : ${GUEST_HOST}"
+  echo " MCP (browser tools): human-browser  (browser_navigate/snapshot/click/type/...)"
+  echo " CLI tool           : gbrowser ctl nav https://example.com   (skill: browser-vm-remote)"
+  echo " Captcha viewer     : http://${GUEST_HOST}:6081/  (open on your phone via Tailscale)"
+  echo " Model              : ${AGENT_MODEL}   (switch in-session with /model)"
+  echo "================================================================"
+}
+
+# Best-effort: bring up the guest CDP tunnel (needs Tailscale up).
+tailscale status >/dev/null 2>&1 || echo "[setup] Tailscale not up yet -> run: tailscale up  (in another window: Ctrl-b c)"
+gbrowser tunnel up >/dev/null 2>&1 || true
+
+# One-time Cursor login if needed (auth persists via volume).
+if ! cursor-agent status >/dev/null 2>&1; then
+  banner
+  echo
+  echo "[setup] Cursor login required (one-time):"
+  NO_OPEN_BROWSER=1 cursor-agent login || true
+fi
+
+banner
+echo
+echo "Starting Cursor agent. Detach with Ctrl-b d (it keeps running)."
+echo
+# Keep the agent as the session's foreground process; respawn if it exits so the
+# tmux session is 'always inside agent'.
+while true; do
+  cursor-agent --model "${AGENT_MODEL}" || true
+  echo
+  echo "[agent exited] restarting in 2s (Ctrl-c to drop to a shell)..."
+  sleep 2 || { exec bash; }
+done

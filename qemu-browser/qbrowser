@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# qemu-browser: run a real Chrome inside a QEMU VM, view/interact via noVNC,
+# and drive it over CDP with the human_browser control CLI.
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${HERE}/scripts/lib.sh"
+
+usage() {
+  cat >&2 <<EOF
+qbrowser — QEMU + real Chrome + noVNC + CDP control
+
+Lifecycle:
+  qbrowser setup [vnc_password]   One-time: fetch image, build disk + seed ISO
+  qbrowser start                  Boot VM, open CDP tunnel, attach control
+  qbrowser stop                   Power off VM and close tunnel
+  qbrowser restart                stop + start
+  qbrowser status                 Show VM / services / CDP / noVNC status
+  qbrowser url                    Print the noVNC URL for your LAN PC
+  qbrowser ssh [cmd...]           SSH into the guest
+  qbrowser logs                   Tail guest cloud-init / serial log
+  qbrowser tunnel {up|down}       Manage the CDP SSH tunnel
+  qbrowser tailscale [up|status]  Bring up Tailscale (shows login URL) / status
+  qbrowser snapshot {save|revert|status}  Single live snapshot (RAM+disk)
+
+Control the browser (drives the SAME tab you see in noVNC):
+  qbrowser ctl <verb> [args...]   Pass-through to human_browser, e.g.:
+     ctl nav https://example.com     ctl list        ctl shot out.png
+     ctl click "button#go"           ctl clickxy 200 300
+     ctl type "hello"                ctl key Enter    ctl hoverxy 400 400
+     ctl html [selector]             ctl snap         ctl eval "document.title"
+EOF
+  exit 1
+}
+
+# Wait until SSH in the guest answers.
+wait_ssh() {
+  local tries="${1:-120}"
+  for _ in $(seq 1 "${tries}"); do
+    ssh_guest true >/dev/null 2>&1 && return 0
+    sleep 2
+  done
+  return 1
+}
+
+# Wait until Chrome CDP answers through the tunnel.
+wait_cdp() {
+  local tries="${1:-60}"
+  for _ in $(seq 1 "${tries}"); do
+    curl -fsS "http://127.0.0.1:${CDP_HOST_PORT}/json/version" >/dev/null 2>&1 && return 0
+    sleep 2
+  done
+  return 1
+}
+
+# Write a human_browser session that attaches to the tunneled CDP endpoint.
+attach() {
+  "${PYTHON_BIN}" -m human_browser.cli attach --port "${CDP_HOST_PORT}"
+}
+
+ctl() {
+  [[ $# -ge 1 ]] || die "ctl needs a verb (e.g. nav, click, type). See: qbrowser"
+  qemu_running || die "VM not running. Run: qbrowser start"
+  tunnel_running || "${HERE}/scripts/tunnel.sh" up
+  wait_cdp 5 >/dev/null 2>&1 || { wait_cdp 30 || die "CDP not reachable through tunnel"; }
+  # Ensure an attached session exists.
+  "${PYTHON_BIN}" -m human_browser.cli status >/dev/null 2>&1 || attach >/dev/null
+  exec "${PYTHON_BIN}" -m human_browser.cli "$@"
+}
+
+cmd="${1:-}"; shift || true
+case "${cmd}" in
+  setup)   exec "${HERE}/scripts/setup.sh" "$@" ;;
+  start)
+    "${HERE}/scripts/run.sh"
+    log "Waiting for guest SSH..."
+    wait_ssh 150 || die "Guest SSH did not come up. Check: qbrowser logs"
+    "${HERE}/scripts/deploy-guest.sh" || warn "guest service deploy failed (continuing)"
+    "${HERE}/scripts/tunnel.sh" up
+    log "Waiting for Chrome CDP (first boot installs Chrome; be patient)..."
+    if wait_cdp 150; then
+      attach || true
+      log "Ready."
+      "${HERE}/scripts/status.sh" || true
+    else
+      warn "CDP not up yet. Guest may still be provisioning; re-run 'qbrowser status' shortly."
+    fi
+    ;;
+  stop)    exec "${HERE}/scripts/stop.sh" ;;
+  restart) "${HERE}/scripts/stop.sh"; exec "${HERE}/qbrowser" start ;;
+  status)  exec "${HERE}/scripts/status.sh" ;;
+  ssh)     exec "${HERE}/scripts/ssh.sh" "$@" ;;
+  tunnel)  exec "${HERE}/scripts/tunnel.sh" "$@" ;;
+  tailscale) exec "${HERE}/scripts/tailscale.sh" "$@" ;;
+  snapshot) exec "${HERE}/scripts/snapshot.sh" "$@" ;;
+  url)
+    echo "noVNC (desktop):  http://$(lan_ip):${NOVNC_PORT}/vnc.html"
+    echo "viewer (mobile):  http://$(lan_ip):${VIEWER_PORT}/"
+    ;;
+  logs)
+    qemu_running || die "VM not running."
+    ssh_guest "sudo tail -n 60 /var/log/cloud-init-output.log 2>/dev/null" 2>/dev/null \
+      || { log "SSH not ready; showing host serial log:"; tail -n 60 "${SERIAL_LOG}" 2>/dev/null; }
+    ;;
+  attach)  ctl_port_attach() { :; }; tunnel_running || "${HERE}/scripts/tunnel.sh" up; attach ;;
+  ctl)     ctl "$@" ;;
+  ""|-h|--help|help) usage ;;
+  *) err "Unknown command: ${cmd}"; usage ;;
+esac

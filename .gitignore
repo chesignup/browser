@@ -5,3 +5,13 @@ __pycache__/
 .local/
 *.png
 .DS_Store
+qemu-browser/var/
+**/listing_details.*
+**/master_listings.json
+**/*_rent.json
+**/*_all.json
+**/scrape_progress.json
+**/pending_tokens.json
+**/.env
+**/id_ed25519*
+**/vnc_pass

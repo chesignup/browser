@@ -66,6 +66,10 @@ class PlaywrightBackend(BrowserBackend):
             f"--user-data-dir={profile_dir}",
             "--no-first-run",
             "--no-default-browser-check",
+            # Required in many cloud/container hosts where user namespaces are restricted.
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
             url,
         ]
         if os.environ.get("DISPLAY"):

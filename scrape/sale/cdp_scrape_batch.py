@@ -1,0 +1,145 @@
+#!/usr/bin/env python3
+"""Run next scrape batch entirely via CDP (no MCP browser_eval needed)."""
+from __future__ import annotations
+import asyncio, json, re, subprocess, sys, urllib.request
+from pathlib import Path
+import websockets
+
+sys.path.insert(0, "/root/work")
+from yad2_cdp_tabs import ensure_scrape_tab, list_pages  # noqa: E402
+
+CDP = "http://127.0.0.1:11222"
+ROOT = Path("/root/work")
+KIND = "sale"
+BATCH = int(sys.argv[1]) if len(sys.argv) > 1 else 20
+
+def list_pages():
+    return json.loads(urllib.request.urlopen(f"{CDP}/json", timeout=5).read())
+
+def pick_page(pages):
+    candidates = []
+    for p in pages:
+        if p.get("type") != "page":
+            continue
+        url = p.get("url") or ""
+        title = p.get("title") or ""
+        if "validate.perfdrive" in url or "Captcha" in title or "Radware" in title:
+            continue
+        if "yad2.co.il" in url:
+            candidates.append(p)
+    # Prefer forsale (newest first in CDP list), else any yad2 page.
+    forsale = [p for p in candidates if "forsale" in (p.get("url") or "")]
+    ordered = forsale + [p for p in candidates if p not in forsale]
+    if not ordered:
+        raise RuntimeError("no yad2 page (all captcha?)")
+    return ordered[0]
+
+
+async def pick_live_page(pages, timeout=8):
+    """Skip hung tabs by probing CDP evaluate with a short timeout."""
+    candidates = []
+    for p in pages:
+        if p.get("type") != "page":
+            continue
+        url = p.get("url") or ""
+        title = p.get("title") or ""
+        if "validate.perfdrive" in url or "Captcha" in title or "Radware" in title:
+            continue
+        if "yad2.co.il" not in url:
+            continue
+        candidates.append(p)
+    forsale = [p for p in candidates if "forsale" in (p.get("url") or "")]
+    ordered = forsale + [p for p in candidates if p not in forsale]
+    last_err = None
+    for p in ordered:
+        try:
+            val = await eval_on(p, "location.hostname", timeout=timeout)
+            if val and "yad2" in str(val):
+                return p
+        except Exception as e:
+            last_err = e
+            continue
+    raise RuntimeError(f"no live yad2 page; last_err={last_err!r}")
+
+async def eval_on(page, expr: str, timeout=300):
+    ws_url = re.sub(r"ws://[^/]+", "ws://127.0.0.1:11222", page["webSocketDebuggerUrl"])
+    try:
+        ws = await websockets.connect(ws_url, open_timeout=8, max_size=20_000_000)
+    except TypeError:
+        ws = await websockets.connect(ws_url, max_size=20_000_000)
+    msg_id = 1
+    await ws.send(json.dumps({
+        "id": msg_id,
+        "method": "Runtime.evaluate",
+        "params": {"expression": expr, "returnByValue": True, "awaitPromise": False},
+    }))
+    try:
+        while True:
+            raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
+            data = json.loads(raw)
+            if data.get("id") != msg_id:
+                continue
+            if "error" in data:
+                raise RuntimeError(data["error"])
+            result = data.get("result", {})
+            if result.get("exceptionDetails"):
+                raise RuntimeError(json.dumps(result["exceptionDetails"], ensure_ascii=False)[:500])
+            return result.get("result", {}).get("value")
+    finally:
+        await ws.close()
+
+def build_expr(batch: int) -> tuple[dict, str]:
+    meta = json.loads(subprocess.check_output([sys.executable, str(ROOT/"next_scrape_batch.py"), str(batch)], text=True))
+    js = (ROOT/"scrape_batch.js").read_text()
+    if js.startswith("/**"):
+        js = js[js.find("*/")+2:]
+    # Return FULL payload in one shot — a second CDP pull of __SCRAPE_JSON__
+    # can return empty even when the scrape succeeded.
+    js = js.replace(
+        "window.__SCRAPE_LAST__ = results;\n  var ok = results.filter(function (r) { return !r.error && r.api; }).length;\n  return JSON.stringify({ ok: ok, fetched: results.length, errors: results.length - ok, results: results });",
+        """window.__SCRAPE_LAST__ = results;
+  var ok = results.filter(function (r) { return !r.error && r.api; }).length;
+  var payload = { ok: ok, fetched: results.length, errors: results.length - ok, results: results };
+  window.__SCRAPE_JSON__ = JSON.stringify(payload);
+  return window.__SCRAPE_JSON__;"""
+    )
+    expr = "window.__SCRAPE_TOKENS__ = " + json.dumps(meta["tokens"]) + ";\n" + js.strip()
+    return meta, expr
+
+async def main():
+    if BATCH <= 0:
+        meta = json.loads(subprocess.check_output([sys.executable, str(ROOT/"next_scrape_batch.py"), "0"], text=True))
+        print(json.dumps(meta))
+        return
+    meta, expr = build_expr(BATCH)
+    if meta["batch_size"] == 0:
+        print(json.dumps({"done": True, "pending_before": meta["pending_before"]}))
+        return
+    tab = await ensure_scrape_tab(KIND, navigate=False)
+    pages = [p for p in list_pages() if p.get("type") == "page"]
+    page = next((p for p in pages if p.get("id") == tab.get("id")), None)
+    if not page:
+        page = await pick_live_page(list_pages())
+    elif not tab.get("live"):
+        page = await pick_live_page(list_pages())
+    # quick captcha/html check
+    probe = await eval_on(page, "(document.body&&document.body.innerText||'').slice(0,80)", timeout=30)
+    if probe and ("Press & Hold" in probe or "Are you human" in probe or "Radware" in probe):
+        print(json.dumps({"captcha": True, "probe": probe}))
+        sys.exit(3)
+    js = await eval_on(page, expr, timeout=300)
+    if not js:
+        rebuild = r"""(function(){var r=window.__SCRAPE_LAST__||[];if(!r.length)return null;var ok=r.filter(function(x){return !x.error&&x.api}).length;var payload={ok:ok,fetched:r.length,errors:r.length-ok,results:r};window.__SCRAPE_JSON__=JSON.stringify(payload);return window.__SCRAPE_JSON__;})()"""
+        js = await eval_on(page, rebuild, timeout=60)
+    if not js:
+        raise RuntimeError("empty scrape json")
+    if not isinstance(js, str):
+        js = json.dumps(js)
+    Path("/tmp/batch_result.json").write_text(js)
+    summary = json.loads(js)
+    apply = subprocess.check_output([sys.executable, str(ROOT/"apply_scrape_batch.py"), "/tmp/batch_result.json"], text=True)
+    print(json.dumps({"batch_meta": meta, "summary": {"ok": summary.get("ok"), "fetched": summary.get("fetched"), "errors": summary.get("errors")}}))
+    print(apply.strip())
+
+if __name__ == "__main__":
+    asyncio.run(main())

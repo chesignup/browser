@@ -1,0 +1,15 @@
+[Unit]
+Description=Mobile CDP screencast viewer for the Chrome tab
+After=chrome.service
+Requires=chrome.service
+
+[Service]
+User=vmuser
+Environment=SCREENCAST_PORT=6081
+Environment=SCREENCAST_CDP_PORT=9222
+ExecStart=/usr/bin/python3 /opt/screencast/server.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

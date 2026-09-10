@@ -1,0 +1,158 @@
+#cloud-config
+hostname: chromebox
+preserve_hostname: false
+
+users:
+  - name: @@VM_USER@@
+    groups: [sudo]
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - @@SSH_PUBKEY@@
+
+ssh_pwauth: false
+package_update: true
+package_upgrade: false
+packages:
+  - xvfb
+  - x11vnc
+  - openbox
+  - novnc
+  - websockify
+  - dbus-x11
+  - fonts-liberation
+  - fonts-noto-color-emoji
+  - ca-certificates
+  - curl
+  - gnupg
+  - python3
+  - python3-aiohttp
+  - git
+  - tmux
+
+write_files:
+  # Reliable DNS: the host's own resolver (which QEMU SLIRP 10.0.2.3 forwards to)
+  # can be flaky, so point the guest resolver at public DNS as a catch-all.
+  - path: /etc/systemd/resolved.conf.d/99-qbrowser.conf
+    content: |
+      [Resolve]
+      DNS=8.8.8.8 1.1.1.1
+      FallbackDNS=9.9.9.9
+      Domains=~.
+
+  # Chrome: disable Secure DNS (DoH) and its built-in async DNS client so it
+  # uses the (reliable) system resolver instead. Fixes DNS_PROBE_FINISHED_NXDOMAIN.
+  - path: /etc/opt/chrome/policies/managed/qbrowser.json
+    content: |
+      {
+        "DnsOverHttpsMode": "off",
+        "BuiltInDnsClientEnabled": false
+      }
+
+  - path: /etc/systemd/system/xvfb.service
+    content: |
+      [Unit]
+      Description=Xvfb virtual framebuffer
+      After=network.target
+      [Service]
+      User=@@VM_USER@@
+      ExecStart=/usr/bin/Xvfb :0 -screen 0 @@SCREEN_W@@x@@SCREEN_H@@x24 -ac +extension GLX +render -noreset
+      Restart=always
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/systemd/system/openbox.service
+    content: |
+      [Unit]
+      Description=Openbox window manager
+      After=xvfb.service
+      Requires=xvfb.service
+      [Service]
+      User=@@VM_USER@@
+      Environment=DISPLAY=:0
+      ExecStartPre=/bin/sleep 2
+      ExecStart=/usr/bin/openbox
+      Restart=always
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/systemd/system/chrome.service
+    content: |
+      [Unit]
+      Description=Google Chrome (headed on Xvfb, CDP enabled)
+      After=openbox.service
+      Requires=openbox.service
+      [Service]
+      User=@@VM_USER@@
+      Environment=DISPLAY=:0
+      ExecStartPre=/bin/sleep 3
+      ExecStart=/usr/bin/google-chrome-stable \
+        --remote-debugging-port=@@GUEST_CDP_PORT@@ \
+        --remote-debugging-address=127.0.0.1 \
+        --user-data-dir=/home/@@VM_USER@@/chrome-profile \
+        --user-agent="@@USER_AGENT@@" \
+        --window-position=0,0 \
+        --window-size=@@SCREEN_W@@,@@SCREEN_H@@ \
+        --start-maximized \
+        --no-first-run \
+        --no-default-browser-check \
+        --disable-features=Translate,AsyncDns \
+        --disable-dev-shm-usage \
+        --no-sandbox \
+        --disable-session-crashed-bubble \
+        --disable-infobars \
+        about:blank
+      Restart=always
+      RestartSec=2
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/systemd/system/x11vnc.service
+    content: |
+      [Unit]
+      Description=x11vnc server for :0 (localhost only)
+      After=xvfb.service
+      Requires=xvfb.service
+      [Service]
+      User=@@VM_USER@@
+      Environment=DISPLAY=:0
+      ExecStartPre=/bin/sleep 2
+      ExecStart=/usr/bin/x11vnc -display :0 -rfbauth /home/@@VM_USER@@/.vnc/passwd -forever -shared -rfbport 5900 -localhost -noxdamage
+      Restart=always
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/systemd/system/novnc.service
+    content: |
+      [Unit]
+      Description=noVNC web viewer (websockify)
+      After=x11vnc.service
+      Requires=x11vnc.service
+      [Service]
+      User=@@VM_USER@@
+      ExecStart=/usr/bin/websockify --web=/usr/share/novnc 6080 localhost:5900
+      Restart=always
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  # Silence sudo hostname warnings and apply the reliable-DNS resolver config.
+  - [ bash, -c, "grep -q chromebox /etc/hosts || echo '127.0.1.1 chromebox' >> /etc/hosts" ]
+  - [ systemctl, restart, systemd-resolved ]
+  # Install Tailscale (daemon enabled; run 'qbrowser tailscale up' to authenticate)
+  - [ bash, -c, "curl -fsSL https://tailscale.com/install.sh | sh" ]
+  # Install real Google Chrome (stable)
+  - [ bash, -c, "curl -fsSL -o /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb" ]
+  - [ bash, -c, "apt-get install -y /tmp/chrome.deb || (apt-get -f install -y && apt-get install -y /tmp/chrome.deb)" ]
+  # VNC password file
+  - [ bash, -c, "install -d -o @@VM_USER@@ -g @@VM_USER@@ -m 700 /home/@@VM_USER@@/.vnc" ]
+  - [ bash, -c, "x11vnc -storepasswd '@@VNC_PASS@@' /home/@@VM_USER@@/.vnc/passwd" ]
+  - [ bash, -c, "chown @@VM_USER@@:@@VM_USER@@ /home/@@VM_USER@@/.vnc/passwd && chmod 600 /home/@@VM_USER@@/.vnc/passwd" ]
+  # symlink vnc.html -> index for convenience
+  - [ bash, -c, "ln -sf /usr/share/novnc/vnc.html /usr/share/novnc/index.html" ]
+  # Enable and start the desktop stack
+  - [ systemctl, daemon-reload ]
+  - [ systemctl, enable, --now, xvfb.service, openbox.service, x11vnc.service, novnc.service, chrome.service ]
+
+final_message: "chromebox ready after $UPTIME seconds"

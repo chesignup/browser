@@ -1,0 +1,24 @@
+services:
+  mcp:
+    build: .
+    image: mcp-human-browser
+    container_name: mcp-human-browser
+    hostname: mcp-human-browser
+    cap_add: [NET_ADMIN, SYS_MODULE]
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - "127.0.0.1:8000:8000"     # local testing only; public access is via Funnel
+    environment:
+      - GUEST_HOST=100.92.122.70  # guest Tailscale IP (or MagicDNS name 'chromebox')
+      - MCP_PORT=8000
+      - MCP_BEARER_TOKEN=change-me
+      # - MCP_NO_AUTH=1                              # disable auth (NOT recommended, public!)
+    volumes:
+      - ${BROWSER_ROOT:-..}:/opt/human_browser:ro
+      - ${BROWSER_ROOT:-..}/qemu-browser/var/id_ed25519:/guest_key.ro:ro
+      - ts-state-mcp:/var/lib/tailscale
+    restart: unless-stopped
+
+volumes:
+  ts-state-mcp:
