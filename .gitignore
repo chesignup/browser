@@ -12,6 +12,10 @@ qemu-browser/var/
 **/*_all.json
 **/scrape_progress.json
 **/pending_tokens.json
+**/geo_cache.json
+**/listings_geo.json
+**/sale_yield.*
+**/research/run.log
 **/.env
 **/id_ed25519*
 **/vnc_pass
