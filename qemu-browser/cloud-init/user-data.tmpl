@@ -142,6 +142,8 @@ runcmd:
   - [ systemctl, restart, systemd-resolved ]
   # Install Tailscale (daemon enabled; run 'qbrowser tailscale up' to authenticate)
   - [ bash, -c, "curl -fsSL https://tailscale.com/install.sh | sh" ]
+  # Do not let Tailscale MagicDNS replace systemd-resolved (breaks Chrome DNS).
+  - [ bash, -c, "mkdir -p /etc/systemd/system/tailscaled.service.d && printf '%s\n' '[Service]' 'ExecStartPost=/bin/bash -c \"sleep 3; tailscale set --accept-dns=false || true\"' > /etc/systemd/system/tailscaled.service.d/no-magicdns.conf && systemctl daemon-reload" ]
   # Install real Google Chrome (stable)
   - [ bash, -c, "curl -fsSL -o /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb" ]
   - [ bash, -c, "apt-get install -y /tmp/chrome.deb || (apt-get -f install -y && apt-get install -y /tmp/chrome.deb)" ]

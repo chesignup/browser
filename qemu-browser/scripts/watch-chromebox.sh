@@ -19,6 +19,17 @@ cdp_ok() { curl -fsS -m 4 "http://127.0.0.1:${CDP_HOST_PORT}/json/version" >/dev
 guest_ssh_ok() { ssh_guest true >/dev/null 2>&1; }
 guest_cdp_ok() { ssh_guest "curl -fsS -m 3 http://127.0.0.1:${GUEST_CDP_PORT}/json/version" >/dev/null 2>&1; }
 
+guest_dns_ok() { ssh_guest "getent ahostsv4 www.yad2.co.il >/dev/null" >/dev/null 2>&1; }
+
+restore_guest_dns() {
+  log "guest DNS down — disabling Tailscale MagicDNS, using systemd-resolved"
+  ssh_guest "sudo tailscale set --accept-dns=false >/dev/null 2>&1 || true"
+  ssh_guest "sudo ln -sfn /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf"
+  ssh_guest "grep -q 'nameserver 8.8.8.8' /etc/systemd/resolved.conf.d/99-qbrowser.conf 2>/dev/null || true"
+  ssh_guest "sudo systemctl restart systemd-resolved >/dev/null 2>&1 || true"
+  guest_dns_ok || ssh_guest "printf 'nameserver 8.8.8.8\nnameserver 1.1.1.1\n' | sudo tee /etc/resolv.conf >/dev/null"
+}
+
 ensure_tunnels() {
   "${QB_ROOT}/scripts/tunnel.sh" up >/dev/null 2>&1 || true
   if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' 2>/dev/null | grep -qx cursor-agent; then
@@ -46,6 +57,7 @@ reset_guest() {
     sleep 3
   done
   guest_ssh_ok || { warn "SSH still down after reset"; return 1; }
+  restore_guest_dns || true
   for _ in $(seq 1 25); do
     guest_cdp_ok && break
     sleep 2
@@ -67,6 +79,8 @@ tick() {
     fi
     return 0
   fi
+
+  guest_dns_ok || restore_guest_dns
 
   if guest_cdp_ok; then
     STATE_CDP=0

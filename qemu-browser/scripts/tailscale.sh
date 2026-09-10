@@ -19,7 +19,9 @@ case "${action}" in
     log "Running 'sudo tailscale up ${*}' in the guest..."
     # Start tailscale up detached so the blocking auth wait doesn't hang us,
     # then read the login URL it prints.
-    ssh_guest "sudo rm -f /tmp/tsup.log; sudo bash -c 'nohup tailscale up ${*} >/tmp/tsup.log 2>&1 &'" || true
+    # MagicDNS overwrites /etc/resolv.conf and then fails in this QEMU guest,
+    # which makes Chrome show chromewebdata for every public site (incl. yad2).
+    ssh_guest "sudo rm -f /tmp/tsup.log; sudo bash -c 'nohup tailscale up --accept-dns=false ${*} >/tmp/tsup.log 2>&1 &'" || true
 
     url=""
     for _ in $(seq 1 20); do

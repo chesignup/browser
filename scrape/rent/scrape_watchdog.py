@@ -95,6 +95,12 @@ def main():
     ap.add_argument("--captcha-poll", type=int, default=15)
     ap.add_argument("--max-consecutive-fail", type=int, default=8)
     ap.add_argument("--viewer", default=VIEWER_HINT)
+    ap.add_argument(
+        "--batch-pause",
+        type=int,
+        default=15,
+        help="seconds to sleep after a successful batch (Radware per-session quota)",
+    )
     args = ap.parse_args()
 
     workdir: Path = args.workdir
@@ -112,7 +118,7 @@ def main():
 
     for i in range(1, args.max_iters + 1):
         info = ensure_scrape_tab_sync(kind, navigate=False)
-        if info.get("captcha"):
+        if info.get("captcha") or not info.get("live"):
             if not wait_captcha_clear(kind, args.viewer, time.time() + args.captcha_wait, args.captcha_poll):
                 print(json.dumps({"watchdog": "captcha_timeout", "progress": read_progress(workdir)}), flush=True)
                 sys.exit(3)
@@ -155,6 +161,8 @@ def main():
             if pending == 0:
                 print(json.dumps({"watchdog": "complete", "progress": read_progress(workdir)}), flush=True)
                 sys.exit(0)
+            if args.batch_pause > 0:
+                time.sleep(args.batch_pause)
             continue
 
         fails += 1
