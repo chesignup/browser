@@ -78,6 +78,8 @@ GET https://gw.yad2.co.il/ad-seen-count/{token}
 | `cdp_scrape_batch.py` | One batch: pick live tab → eval scrape → write `/tmp/batch_result.json` → apply |
 | `next_scrape_batch.py` / `apply_scrape_batch.py` | Pending tokens + merge into JSON/CSV/MD |
 | `yad2_cdp_tabs.py` | Single-tab CDP hygiene: prune, ensure, navigate in-place |
+| `yad2_listing_fields.py` | Overlay feed + details; pick description / dates |
+| `backfill_listing_gaps.py` | Sync master from details; re-scrape description/date gaps |
 | `scrape_watchdog.py` | Loop batches; recover hung tabs / captcha / timeouts |
 
 ### Feed collection (results pages)
@@ -138,10 +140,31 @@ Watchdog behavior (always prefer this for long runs):
 
 ### Outputs (typical)
 
-- `master_listings.json` — feed tokens
-- `listing_details.json` / `.csv` — enriched rows
+- `master_listings.json` — **merged listing table** (feed + details). Must include
+  `description`, `date_advertised`, `date_last_seen_active`, `views`, `link`.
+  Do not ship feed-only rows as the “listings” file.
+- `listing_details.json` / `.csv` — same enriched rows (source of truth for merge)
 - `apartments_for_sale.md` or `apartments_for_rent.md`
 - `scrape_progress.json` — `{done, errors, total, updated_at}`
+
+### Mandatory `description` (free text of the ad)
+
+Every listing JSON object must have `description`: the full Hebrew ad body.
+
+Sources, in order:
+1. API `info_text` (and `metaData.description` if present) from
+   `GET /api/item/{token}` or `gw.yad2.co.il/realestate-item/{token}`
+2. If still empty: the item page DOM
+   `document.querySelector('[data-testid="property-description"]')?.innerText`
+   (class `description-module-scss-module__wvz9Ha__description`).
+   Example: `https://www.yad2.co.il/realestate/item/tel-aviv-area/f80qt89w`
+
+Do not truncate in JSON. CSV/MD may shorten for table width only.
+
+Also always set:
+- `date_advertised` — `dates.createdAt` / `date_added`
+- `date_last_seen_active` — ISO time of this successful scrape
+- `views` — `ad-seen-count` when available
 
 ## Interactive workflow (small searches)
 

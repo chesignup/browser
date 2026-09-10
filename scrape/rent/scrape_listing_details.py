@@ -8,6 +8,15 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from yad2_listing_fields import (
+    overlay_details_on_feed,
+    pick_date_advertised,
+    pick_description_from_api,
+)
+
 ROOT = Path("/root/work/rent")
 MASTER = ROOT / "master_listings.json"
 DETAILS = ROOT / "listing_details.json"
@@ -38,7 +47,7 @@ MIN_PRICE = 6000
 EXCLUDE_TYPES = {"חניה", "מחסן", "מגרשים", "בניין מגורים", "כללי"}
 
 
-def merge_master() -> list[dict]:
+def build_feed_skeleton() -> list[dict]:
     seen: dict[str, dict] = {}
     for fname, expected_city in FEED_FILES:
         path = ROOT / fname
@@ -73,8 +82,17 @@ def merge_master() -> list[dict]:
                 "region": region,
                 "link": f"https://www.yad2.co.il/realestate/item/{region}/{token}",
                 "listing_type": "rent",
+                "description": "",
+                "date_advertised": "",
+                "date_last_seen_active": "",
+                "views": None,
+                "listing_id": token,
             }
-    items = sorted(seen.values(), key=lambda x: (x["city"], x["price"] or 0, x["token"]))
+    return sorted(seen.values(), key=lambda x: (x["city"], x["price"] or 0, x["token"]))
+
+
+def merge_master() -> list[dict]:
+    items = overlay_details_on_feed(build_feed_skeleton(), load_details())
     MASTER.write_text(json.dumps(items, ensure_ascii=False, indent=2))
     return items
 
@@ -111,7 +129,7 @@ def _num(info_bar, key):
 
 def parse_api_item(token: str, feed: dict, api: dict, views: int | None) -> dict:
     am = amenity_map(api.get("additional_info_items_v2"))
-    desc = api.get("info_text") or ""
+    desc = pick_description_from_api(api)
     parking_raw = api.get("parking")
     if parking_raw in (None, "", "ללא", "אין", 0, "0"):
         parking = False
@@ -121,9 +139,7 @@ def parse_api_item(token: str, feed: dict, api: dict, views: int | None) -> dict
     mamad = am.get("shelter")
     if mamad is None:
         mamad = bool(api.get("shelter"))
-    date_advertised = api.get("date_added") or api.get("date") or ""
-    if not date_advertised and api.get("date_raw"):
-        date_advertised = api["date_raw"]
+    date_advertised = pick_date_advertised(api)
     return {
         **feed,
         "listing_id": token,
@@ -210,6 +226,8 @@ def save_details(by_token: dict[str, dict]) -> None:
             )
         )
     TABLE_MD.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    master_items = overlay_details_on_feed(build_feed_skeleton(), by_token)
+    MASTER.write_text(json.dumps(master_items, ensure_ascii=False, indent=2))
 
 
 def pending_tokens(master: list[dict], done: dict[str, dict]) -> list[str]:

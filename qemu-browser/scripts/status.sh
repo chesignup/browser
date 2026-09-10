@@ -35,3 +35,4 @@ fi
 
 echo "noVNC:     http://$(lan_ip):${NOVNC_PORT}/vnc.html  (bind: ${LAN_BIND})"
 echo "viewer:    http://$(lan_ip):${VIEWER_PORT}/  (mobile-friendly)"
+echo "watch:     $("${QB_ROOT}/scripts/watch-chromebox.sh" status 2>/dev/null || echo down)"

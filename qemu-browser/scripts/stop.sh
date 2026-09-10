@@ -3,6 +3,7 @@
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 
+"${QB_ROOT}/scripts/watch-chromebox.sh" down || true
 "${QB_ROOT}/scripts/tunnel.sh" down || true
 
 if qemu_running; then

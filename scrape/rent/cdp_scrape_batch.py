@@ -11,7 +11,9 @@ from yad2_cdp_tabs import ensure_scrape_tab, list_pages  # noqa: E402
 CDP = "http://127.0.0.1:11222"
 ROOT = Path("/root/work/rent")
 KIND = "rent"
-BATCH = int(sys.argv[1]) if len(sys.argv) > 1 else 20
+ARGS = [a for a in sys.argv[1:] if a != "--gap-only"]
+GAP_ONLY = "--gap-only" in sys.argv
+BATCH = int(ARGS[0]) if ARGS else 20
 
 
 def list_pages():
@@ -73,7 +75,10 @@ async def pick_live_page(pages, timeout=8):
 
 
 def build_expr(batch: int) -> tuple[dict, str]:
-    meta = json.loads(subprocess.check_output([sys.executable, str(ROOT / "next_scrape_batch.py"), str(batch)], text=True))
+    nb_cmd = [sys.executable, str(ROOT / "next_scrape_batch.py"), str(batch)]
+    if GAP_ONLY:
+        nb_cmd.append("--gap-only")
+    meta = json.loads(subprocess.check_output(nb_cmd, text=True))
     js = (ROOT / "scrape_batch.js").read_text()
     if js.startswith("/**"):
         js = js[js.find("*/") + 2:]
@@ -85,13 +90,26 @@ def build_expr(batch: int) -> tuple[dict, str]:
   window.__SCRAPE_JSON__ = JSON.stringify(payload);
   return window.__SCRAPE_JSON__;""",
     )
-    expr = "window.__SCRAPE_TOKENS__ = " + json.dumps(meta["tokens"]) + ";\n" + js.strip()
+    master = json.loads((ROOT / "master_listings.json").read_text())
+    links = {
+        m["token"]: m["link"]
+        for m in master
+        if m.get("token") in meta.get("tokens", []) and m.get("link")
+    }
+    expr = (
+        "window.__SCRAPE_TOKENS__ = " + json.dumps(meta["tokens"]) + ";\n"
+        + "window.__SCRAPE_LINKS__ = " + json.dumps(links) + ";\n"
+        + js.strip()
+    )
     return meta, expr
 
 
 async def main():
     if BATCH <= 0:
-        meta = json.loads(subprocess.check_output([sys.executable, str(ROOT / "next_scrape_batch.py"), "0"], text=True))
+        nb_cmd = [sys.executable, str(ROOT / "next_scrape_batch.py"), "0"]
+        if GAP_ONLY:
+            nb_cmd.append("--gap-only")
+        meta = json.loads(subprocess.check_output(nb_cmd, text=True))
         print(json.dumps(meta))
         return
     meta, expr = build_expr(BATCH)

@@ -17,6 +17,7 @@ for captchas.
 cd /home/s/opt/qemu-browser
 ./qbrowser setup 'YOUR_VNC_PASSWORD'   # one-time: downloads Ubuntu image, builds disk + seed
 ./qbrowser start                        # boots VM, opens CDP tunnel, attaches control
+./qbrowser watch up                    # keep SSH + Chrome CDP alive (auto-reset hung guest)
 ./qbrowser status                       # check VM / services / CDP / noVNC
 ./qbrowser url                          # noVNC URL to open on your LAN PC
 ```

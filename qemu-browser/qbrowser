@@ -21,6 +21,8 @@ Lifecycle:
   qbrowser tunnel {up|down}       Manage the CDP SSH tunnel
   qbrowser tailscale [up|status]  Bring up Tailscale (shows login URL) / status
   qbrowser snapshot {save|revert|status}  Single live snapshot (RAM+disk)
+  qbrowser watch {up|down|status|tick}    Keep guest SSH + Chrome CDP alive
+                                          (QMP reset if SSH dies; restart Chrome if CDP dies)
 
 Control the browser (drives the SAME tab you see in noVNC):
   qbrowser ctl <verb> [args...]   Pass-through to human_browser, e.g.:
@@ -84,6 +86,7 @@ case "${cmd}" in
     else
       warn "CDP not up yet. Guest may still be provisioning; re-run 'qbrowser status' shortly."
     fi
+    "${HERE}/scripts/watch-chromebox.sh" up || true
     ;;
   stop)    exec "${HERE}/scripts/stop.sh" ;;
   restart) "${HERE}/scripts/stop.sh"; exec "${HERE}/qbrowser" start ;;
@@ -92,6 +95,7 @@ case "${cmd}" in
   tunnel)  exec "${HERE}/scripts/tunnel.sh" "$@" ;;
   tailscale) exec "${HERE}/scripts/tailscale.sh" "$@" ;;
   snapshot) exec "${HERE}/scripts/snapshot.sh" "$@" ;;
+  watch)   exec "${HERE}/scripts/watch-chromebox.sh" "${1:-up}" ;;
   url)
     echo "noVNC (desktop):  http://$(lan_ip):${NOVNC_PORT}/vnc.html"
     echo "viewer (mobile):  http://$(lan_ip):${VIEWER_PORT}/"

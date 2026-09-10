@@ -23,13 +23,10 @@ import sys
 import time
 from pathlib import Path
 
-_HERE = Path(__file__).resolve().parent
-for _p in (_HERE, _HERE.parent, Path("/root/work"), Path("/root/.cursor/skills/yad2/scripts")):
-    if (_p / "yad2_cdp_tabs.py").exists() and str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+sys.path.insert(0, "/root/work")
 from yad2_cdp_tabs import ensure_scrape_tab_sync, is_captcha_page, list_pages  # noqa: E402
 
-VIEWER_HINT = __import__("os").environ.get("YAD2_VIEWER_URL", "http://127.0.0.1:6081/")
+VIEWER_HINT = "http://100.92.122.70:6081/"
 
 
 def read_progress(workdir: Path) -> dict:
@@ -115,7 +112,7 @@ def main():
 
     for i in range(1, args.max_iters + 1):
         info = ensure_scrape_tab_sync(kind, navigate=False)
-        if info.get("captcha"):
+        if info.get("captcha") or not info.get("live"):
             if not wait_captcha_clear(kind, args.viewer, time.time() + args.captcha_wait, args.captcha_poll):
                 print(json.dumps({"watchdog": "captcha_timeout", "progress": read_progress(workdir)}), flush=True)
                 sys.exit(3)

@@ -21,5 +21,9 @@ python3 collect_yad2_feeds.py
 python3 scrape_watchdog.py --workdir . --kind sale --batch 40
 ```
 
-Shared helpers: `../yad2_cdp_tabs.py`, skill copy under `skills/yad2/scripts/`.
+Shared helpers: `yad2_listing_fields.py` (description / dates / views merge),
+`../yad2_cdp_tabs.py`, skill copy under `skills/yad2/scripts/`.
 Captcha: open the mobile viewer; watchdog polls the single scrape tab.
+
+Host copy of live dumps: `/home/s/opt/yad2/watch-copy.sh` (also `scrape/watch-copy.sh`).
+Copies `master_listings.json` + `listing_details.*` on every progress change.
