@@ -32,19 +32,91 @@ Two modes:
 - **Re-snapshot** after every navigation/filter change.
 - **Expect bot checks** — plan for human-in-the-loop via `browser_viewer_url`.
 
-## Bot / captcha (PerimeterX / Radware / HUMAN)
+## Bot / captcha (Radware Bot Manager)
+
+Protection is **Radware Bot Manager** (formerly ShieldSquare) in front of
+AWS CloudFront, with **hCaptcha** on the ShieldSquare challenge page. The site
+is Next.js SSR plus a PHP backend. Fingerprinting uses the `__uzm*` cookie
+family (not PerimeterX alone). See
+[avishaynaim/yad2-investigator](https://github.com/avishaynaim/yad2-investigator).
 
 Signs: "Press & Hold", "אני לא רובוט", `validate.perfdrive`, title contains
-Captcha/Radware, empty feed, or CDP evaluate timeouts on all tabs.
+Captcha/Radware/ShieldSquare, HTTP 403/429/503, short "access denied" HTML,
+empty feed, or CDP evaluate timeouts on all tabs.
 
 1. Prefer the **watchdog** (`scripts/scrape_watchdog.py`) — it keeps **one**
    scrape tab, polls until captcha clears, and resumes batches.
 2. If still blocked: call `browser_viewer_url` and tell the user to open the
    **mobile viewer** (`http://<guest>:6081/`) and complete the check on that
-   single tab.
-3. Do not hammer reloads or open new tabs — that escalates the block and
-   leaves dozens of captcha tabs open.
+   **single** tab. Solving the challenge mints a fresh Radware session.
+3. Do not hammer reloads or open new tabs — extra navigations burn the
+   per-session quota and spawn dozens of captcha tabs.
 4. After captcha clears, resume the same scrape (pending tokens are persisted).
+   Do not keep sending XHR on a flagged session; wait for the human solve.
+
+### What triggers the bot (investigator findings)
+
+Radware counts **requests per session** (the `__uzm*` cookie set), **not**
+per IP and **not** per wall-clock rate. Slowing down inside a burned session
+does not help. Fresh session = fresh quota. That is the main result from
+the investigation repo.
+
+| Cookie | Role |
+|--------|------|
+| `__uzma` | UUID session id |
+| `__uzmb` | visit unix timestamp |
+| `__uzmc` | visit count / sequence |
+| `__uzmd` | last-seen timestamp |
+| `__uzme` | device/browser classification hash |
+| `__uzmf` | composite fingerprint |
+| `uzmx` | cross-domain fingerprint |
+
+**Triggers (do these and you get CAPTCHA):**
+
+- **Missing `Sec-Fetch-*` headers** → instant CAPTCHA. Host `curl`/`requests`
+  without a real browser fetch metadata is dead on arrival. Never scrape
+  yad2 from the host or the agent container over plain HTTP.
+- **~6–7 requests on the same Radware session** (HTML pages in the
+  investigator’s tests) → session flagged. Remaining requests on those
+  cookies fail until the session is replaced (new cookies / captcha solve).
+- **Continuing after the first block** on the same cookies — abandon the
+  rest of that batch; wait or rotate session.
+
+**Does *not* trigger by itself:** TLS fingerprint alone, missing cookies,
+missing Referer, random page order, or going faster vs slower *within* the
+quota.
+
+**How this maps onto our headed Chrome (not curl_cffi):**
+
+- Stay inside the guest Chromium tab. Chrome sends `Sec-Fetch-*` and
+  collects real `__uzm*` cookies. That is why in-page XHR works and host
+  HTTP does not.
+- The guest profile is **one long session**. Thousands of
+  `/api/item/{token}` calls share the same `__uzm*` cookies, so captcha
+  after a long scrape is expected — it is session quota, not “we were too
+  fast.”
+- **Warm up** on `https://www.yad2.co.il/` (or a real results page) before
+  feed collect or the first detail batch, so cookies exist.
+- **Between batches:** sleep **12–25s** (investigator cooldown). Inside a
+  batch, **3–6s** between *page navigations*. Bursting 40 sync XHRs in one
+  `evaluate` is convenient but spends quota; if captcha appears, drop
+  `--batch` (try 10–20) and keep the inter-batch sleep.
+- **One tab.** `PUT /json/new` and extra `Page.navigate` are extra billed
+  requests on the same cookies.
+- The JSON feed
+  `GET https://www.yad2.co.il/api/pre-load/getFeedIndex/realestate/{rent|forsale}`
+  is lighter than full HTML results pages. Prefer dehydratedState already
+  in the live tab; if you must hit an API, do it as **same-origin XHR from
+  the page** (`Sec-Fetch-Mode: cors`, `Sec-Fetch-Site: same-origin`), never
+  from the host.
+- After a block: stop the batch, poll that one tab, human solves captcha,
+  then continue. A flagged session will not recover by waiting a few
+  seconds without a new cookie set.
+
+We do **not** copy the investigator’s host-side `curl_cffi` session
+rotation. Guest Chrome + CDP is the allowed path; their findings only
+tell us **when** Radware trips and **not to keep hammering** a burned
+session.
 
 ### Tab hygiene (required)
 
