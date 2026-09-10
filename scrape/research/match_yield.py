@@ -43,11 +43,9 @@ def _bool(v):
 
 
 def amenity_ok(sale: dict, rent: dict) -> bool:
+    """Elevator / ממ״ד / parking must match (missing treated as False)."""
     for key in ("elevator", "mamad", "parking"):
-        s, r = _bool(sale.get(key)), _bool(rent.get(key))
-        if s is None or r is None:
-            continue
-        if s != r:
+        if bool(sale.get(key)) != bool(rent.get(key)):
             return False
     return True
 
@@ -112,6 +110,7 @@ def load_kind(folder: Path) -> list[dict]:
             if g.get("lat") not in (None, ""):
                 row["lat"], row["lon"] = g.get("lat"), g.get("lon")
             out.append(row)
+    out.sort(key=lambda r: r.get("token") or "")
     return out
 
 
@@ -123,8 +122,16 @@ def match_rows(
     sqm_rel: float = 0.20,
     sqm_abs: float = 15,
 ) -> list[dict]:
+    """Deterministic AND: geolocation distance AND feature similarity.
+
+    A pair matches only if:
+      1. both have lat/lon
+      2. haversine(sale, rent) <= radius_m
+      3. rooms within tol, sqm within band, elevator/mamad/parking equal
+    No LLM. Same inputs → same table (token-sorted, stable tie-breaks).
+    """
     rent_idx = []
-    for r in rents:
+    for r in sorted(rents, key=lambda x: x.get("token") or ""):
         c = coords(r)
         price = _num(r.get("price")) or 0
         if not c or price <= 0:
@@ -132,7 +139,7 @@ def match_rows(
         rent_idx.append((r, c[0], c[1], price))
 
     table = []
-    for s in sales:
+    for s in sorted(sales, key=lambda x: x.get("token") or ""):
         sale_price = _num(s.get("price")) or 0
         sc = coords(s)
         if sale_price <= 0 or not sc:
@@ -144,11 +151,11 @@ def match_rows(
             dist = haversine_m(sc[0], sc[1], rlat, rlon)
             if dist > radius_m:
                 continue
-            matches.append((rprice, dist, r))
+            matches.append((rprice, dist, r.get("token") or "", r))
         if not matches:
             continue
-        matches.sort(key=lambda x: (-x[0], x[1]))
-        best_rent, best_dist, best = matches[0]
+        matches.sort(key=lambda x: (-x[0], x[1], x[2]))
+        best_rent, best_dist, _tok, best = matches[0]
         ratio = (best_rent * 12.0) / sale_price
         table.append({
             "sale_price": int(sale_price),
@@ -160,8 +167,8 @@ def match_rows(
             "city": s.get("city") or "",
             "neighborhood": s.get("neighborhood") or "",
             "street": s.get("street") or "",
-            "lat": sc[0],
-            "lon": sc[1],
+            "lat": round(sc[0], 7),
+            "lon": round(sc[1], 7),
             "date_last_seen_active": s.get("date_last_seen_active") or "",
             "date_advertised": s.get("date_advertised") or "",
             "views": s.get("views") if s.get("views") not in (None, "") else "",
@@ -169,14 +176,14 @@ def match_rows(
             "rent_monthly_used": int(best_rent),
             "rent_link": best.get("link") or "",
             "rent_token": best.get("token") or "",
-            "rent_distance_m": int(best_dist),
+            "rent_distance_m": int(round(best_dist)),
             "n_rent_matches": len(matches),
             "sale_token": s.get("token") or "",
-            "elevator": s.get("elevator"),
-            "mamad": s.get("mamad"),
-            "parking": s.get("parking"),
+            "elevator": bool(s.get("elevator")),
+            "mamad": bool(s.get("mamad")),
+            "parking": bool(s.get("parking")),
         })
-    table.sort(key=lambda r: r["ratio"], reverse=True)
+    table.sort(key=lambda r: (-r["ratio"], r["sale_token"]))
     return table
 
 

@@ -238,6 +238,19 @@ Also always set:
 - `date_last_seen_active` — ISO time of this successful scrape
 - `views` — `ad-seen-count` when available
 
+## Sale↔rent yield (deterministic; no LLM)
+
+Do **not** match listings in the model. After dumps are copied, run:
+
+`python3 /home/s/opt/yad2/research/run.py`
+
+A pair is a match only if **both**:
+
+1. **Geolocation:** both have Nominatim `lat`/`lon` and haversine ≤ 600 m
+2. **Features:** rooms ±0.5, sqm ±20%, elevator / ממ״ד / parking equal
+
+Then `ratio = max(monthly rent among matches) × 12 / sale_price`. Same JSON in → same CSV out (token-sorted, stable ties).
+
 ## Interactive workflow (small searches)
 
 1. `browser_navigate("https://www.yad2.co.il")` → snapshot.
