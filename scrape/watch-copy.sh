@@ -16,6 +16,8 @@ INTERVAL="${INTERVAL:-20}"
 ONCE=0
 UNTIL_DONE=0
 PID_FILE="${WATCH_COPY_PID:-${DEST}/watch-copy.pid}"
+ON_COMPLETE="${YAD2_ON_COMPLETE:-${DEST}/research/run.py}"
+complete_hook_ran=0
 
 SALE_FILES=(
   master_listings.json listing_details.json listing_details.csv
@@ -142,6 +144,14 @@ fi
 log "watching ${CONTAINER} every ${INTERVAL}s  dest=${DEST}  (copies on progress, not only at 100%)"
 while true; do
   if loop; then
+    if [[ "${complete_hook_ran}" -eq 0 ]]; then
+      complete_hook_ran=1
+      if [[ -n "${ON_COMPLETE}" && -f "${ON_COMPLETE}" ]]; then
+        log "both scrapes complete — running ${ON_COMPLETE}"
+        nohup python3 "${ON_COMPLETE}" --yad2 "${DEST}" >>"${DEST}/research/run.log" 2>&1 &
+        log "research pid $!"
+      fi
+    fi
     if [[ "$UNTIL_DONE" -eq 1 ]]; then
       log "sale and rent both complete. exiting."
       exit 0

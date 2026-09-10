@@ -27,3 +27,6 @@ Captcha: open the mobile viewer; watchdog polls the single scrape tab.
 
 Host copy of live dumps: `/home/s/opt/yad2/watch-copy.sh` (also `scrape/watch-copy.sh`).
 Copies `master_listings.json` + `listing_details.*` on every progress change.
+
+After both scrapes finish, `yad2/research/run.py` geocodes listings and ranks
+sales by gross yield vs nearby similar rents (`scrape/research/` in this repo).
