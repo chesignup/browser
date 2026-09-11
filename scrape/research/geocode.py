@@ -91,15 +91,42 @@ def geocode_rows(
     delay: float = 1.05,
     limit: int | None = None,
     cache_path: Path | None = None,
+    progress_path: Path | None = None,
+    label: str = "",
 ) -> tuple[int, int]:
     hits = misses = 0
     n = 0
+    total = len(rows) if limit is None else min(len(rows), limit)
+    net_since_save = 0
+
+    def heartbeat():
+        if progress_path:
+            progress_path.write_text(json.dumps({
+                "label": label,
+                "done": n,
+                "total": total,
+                "geocoded": hits,
+                "missing": misses,
+                "cache_keys": len(cache),
+            }) + "\n")
+        print(json.dumps({
+            "geocode_progress": True,
+            "label": label,
+            "done": n,
+            "total": total,
+            "geocoded": hits,
+            "missing": misses,
+            "cache_keys": len(cache),
+        }), flush=True)
+
     for row in rows:
         if limit is not None and n >= limit:
             break
         n += 1
         if row.get("lat") not in (None, "", 0) and row.get("lon") not in (None, "", 0):
             hits += 1
+            if n % 200 == 0:
+                heartbeat()
             continue
         queries = address_queries(row)
         if not queries:
@@ -117,8 +144,7 @@ def geocode_rows(
             except Exception:
                 found = None
             cache[q] = found
-            if cache_path:
-                save_cache(cache_path, cache)
+            net_since_save += 1
             time.sleep(delay)
             if found:
                 break
@@ -132,6 +158,15 @@ def geocode_rows(
             row.setdefault("lat", None)
             row.setdefault("lon", None)
             misses += 1
+        if net_since_save >= 20 and cache_path:
+            save_cache(cache_path, cache)
+            net_since_save = 0
+            heartbeat()
+        elif n % 50 == 0:
+            heartbeat()
+    if cache_path:
+        save_cache(cache_path, cache)
+    heartbeat()
     return hits, misses
 
 

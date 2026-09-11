@@ -86,6 +86,7 @@ sudo -u "${INSTALL_USER}" bash -lc "
   chmod +x qbrowser scripts/*.sh scripts/*.py 2>/dev/null || true
   ./qbrowser setup '${VNC_PASS}'
   ./qbrowser start
+  ./qbrowser watch install || true
   ./qbrowser snapshot save || true
 "
 

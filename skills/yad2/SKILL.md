@@ -219,6 +219,10 @@ Watchdog behavior (always prefer this for long runs):
 - `apartments_for_sale.md` or `apartments_for_rent.md`
 - `scrape_progress.json` — `{done, errors, total, updated_at}`
 
+After both sale and rent details are complete: host `watch-copy.sh` copies dumps
+to `/home/s/opt/yad2/` and can run geocode + match. Yield pairing is **not** LLM
+work — see skill **`yad2-research`**. Publish dumps with **`repo-git-sync`**.
+
 ### Mandatory `description` (free text of the ad)
 
 Every listing JSON object must have `description`: the full Hebrew ad body.

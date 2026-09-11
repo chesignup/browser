@@ -20,7 +20,10 @@ from match_yield import load_kind, match_rows, write_table  # noqa: E402
 
 def enrich_folder(folder: Path, cache: dict, cache_path: Path, delay: float, limit: int | None) -> Path:
     rows = load_kind(folder)
-    hits, misses = geocode_rows(rows, cache, delay=delay, limit=limit, cache_path=cache_path)
+    hits, misses = geocode_rows(
+        rows, cache, delay=delay, limit=limit, cache_path=cache_path,
+        progress_path=HERE / "progress.json", label=str(folder.name),
+    )
     save_cache(cache_path, cache)
     out = folder / "listings_geo.json"
     out.write_text(json.dumps(rows, ensure_ascii=False, indent=2) + "\n")
