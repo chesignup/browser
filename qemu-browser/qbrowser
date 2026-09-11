@@ -86,7 +86,7 @@ case "${cmd}" in
     else
       warn "CDP not up yet. Guest may still be provisioning; re-run 'qbrowser status' shortly."
     fi
-    "${HERE}/scripts/watch-chromebox.sh" up || true
+    "${HERE}/scripts/watch-chromebox.sh" install || "${HERE}/scripts/watch-chromebox.sh" up || true
     ;;
   stop)    exec "${HERE}/scripts/stop.sh" ;;
   restart) "${HERE}/scripts/stop.sh"; exec "${HERE}/qbrowser" start ;;

@@ -37,10 +37,15 @@ tunnel_running() {
 }
 
 ssh_guest() {
-  ssh -i "${SSH_KEY}" \
+  # Keep SSH from hanging forever when the guest is wedged (TCP up, no banner).
+  timeout 8 ssh -i "${SSH_KEY}" \
     -o StrictHostKeyChecking=no \
     -o UserKnownHostsFile=/dev/null \
     -o LogLevel=ERROR \
-    -o ConnectTimeout=5 \
+    -o BatchMode=yes \
+    -o ConnectTimeout=4 \
+    -o ConnectionAttempts=1 \
+    -o ServerAliveInterval=2 \
+    -o ServerAliveCountMax=2 \
     -p "${SSH_PORT}" "${VM_USER}@127.0.0.1" "$@"
 }
