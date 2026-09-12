@@ -20,10 +20,11 @@ log "Accel: ${ACCEL}"
 # hostfwd:
 #   SSH  -> host 127.0.0.1:SSH_PORT  -> guest :22   (management + CDP tunnel)
 #   noVNC-> host LAN_BIND:NOVNC_PORT -> guest :6080  (view + interact from LAN)
-# CDP is intentionally NOT forwarded here; reach it via ./qbrowser tunnel.
+#   CDP  -> host LAN_BIND:GUEST_CDP_PORT -> guest :9222 (web tab viewer + CDP)
 HOSTFWD="hostfwd=tcp:127.0.0.1:${SSH_PORT}-:22"
 HOSTFWD+=",hostfwd=tcp:${LAN_BIND}:${NOVNC_PORT}-:6080"
 HOSTFWD+=",hostfwd=tcp:${LAN_BIND}:${VIEWER_PORT}-:${VIEWER_PORT}"
+HOSTFWD+=",hostfwd=tcp:${LAN_BIND}:${GUEST_CDP_PORT}-:${GUEST_CDP_PORT}"
 
 log "Starting VM '${VM_NAME}' (${VM_CPUS} vCPU, ${VM_RAM_MB} MB)..."
 qemu-system-x86_64 \

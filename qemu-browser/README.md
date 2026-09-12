@@ -41,13 +41,24 @@ Full verb list: run `./qbrowser` with no args.
 
 ## View / captcha
 
-Two viewers of the **same** tab (agent shares it, so state carries over):
+View and interact with the **same** live tabs that the agent controls:
 
-- **Desktop (noVNC):** `http://<host-lan-ip>:6080/vnc.html` — enter the VNC password.
-- **Mobile:** `http://<host-lan-ip>:6081/` — responsive; tap = click, drag = scroll,
-  ⌨ for keyboard, URL bar to navigate. No password.
+- **Remote Web Browser Viewer (Recommended):** `http://<tailscale-ip>:9222/` or `http://<host-lan-ip>:9222/`
+  - High-FPS real-time CDP screencast with frame-ack backpressure.
+  - Interactive Chrome tab strip (switch tabs, `+` new tab, `×` close tab).
+  - Chrome Omnibox toolbar (Back, Forward, Reload, address bar to type URL or search).
+  - Mouse clicks, native context menu (right-click), smooth wheel scrolling, full desktop keyboard & mobile input.
+  - One-click "DevTools" button to open Chrome DevTools inspector.
 
-Use the LAN IP on the same network, or the guest's Tailscale IP from anywhere.
+- **Native Desktop Chrome (`chrome://inspect`):**
+  - In desktop Chrome, open `chrome://inspect/#devices`.
+  - Under **Discover network targets**, click **Configure...** and add `100.92.122.70:9222`.
+  - Chromebox tabs appear under Remote Target. Click **inspect** to view and control the tab natively with screencast and full developer tools.
+
+- **Desktop noVNC:** `http://<host-lan-ip>:6080/vnc.html` — full X11 desktop view (enter VNC password).
+- **Mobile Viewer:** `http://<host-lan-ip>:6081/` — mobile-friendly view.
+
+Use the LAN IP on the same network, or the guest's Tailscale IP (`100.92.122.70`) from anywhere.
 
 ## Layout
 

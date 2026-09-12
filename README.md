@@ -41,7 +41,8 @@ GitHub updates: `skills/repo-git-sync/SKILL.md`.
 
 ## Viewers
 
-- Mobile (tab bar, tap/scroll): port **6081**
+- **Remote Web Browser & DevTools (Recommended):** port **9222** (`http://<tailscale-ip>:9222/` or `http://<host-lan>:9222/`) — interactive Chrome tab strip, Omnibox address bar, real-time CDP screencast, mouse/touch/keyboard, and direct integration with native desktop `chrome://inspect`.
+- Mobile viewer: port **6081**
 - Desktop noVNC: port **6080**
 
 Same Chromium the agent/MCP drives.

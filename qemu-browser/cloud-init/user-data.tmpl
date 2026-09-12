@@ -88,7 +88,7 @@ write_files:
       Environment=DISPLAY=:0
       ExecStartPre=/bin/sleep 3
       ExecStart=/usr/bin/google-chrome-stable \
-        --remote-debugging-port=@@GUEST_CDP_PORT@@ \
+        --remote-debugging-port=@@CHROME_INTERNAL_PORT@@ \
         --remote-debugging-address=127.0.0.1 \
         --user-data-dir=/home/@@VM_USER@@/chrome-profile \
         --user-agent="@@USER_AGENT@@" \

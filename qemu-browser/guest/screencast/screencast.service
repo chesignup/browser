@@ -1,12 +1,13 @@
 [Unit]
-Description=Mobile CDP screencast viewer for the Chrome tab
+Description=Chrome CDP Bridge & Remote Browser Tab Viewer
 After=chrome.service
 Requires=chrome.service
 
 [Service]
 User=vmuser
-Environment=SCREENCAST_PORT=6081
-Environment=SCREENCAST_CDP_PORT=9222
+Environment=CHROME_INTERNAL_CDP=9221
+Environment=CDP_LISTEN_PORT=9222
+Environment=VIEWER_LISTEN_PORT=6081
 ExecStart=/usr/bin/python3 /opt/screencast/server.py
 Restart=always
 RestartSec=2

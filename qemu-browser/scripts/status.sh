@@ -34,5 +34,12 @@ else
 fi
 
 echo "noVNC:     http://$(lan_ip):${NOVNC_PORT}/vnc.html  (bind: ${LAN_BIND})"
-echo "viewer:    http://$(lan_ip):${VIEWER_PORT}/  (mobile-friendly)"
+echo "viewer:    http://$(lan_ip):${VIEWER_PORT}/  (interactive browser viewer)"
+echo "CDP web:   http://$(lan_ip):${GUEST_CDP_PORT}/  (browse tab / chrome://inspect)"
+if qemu_running && ssh_guest true >/dev/null 2>&1; then
+  ts_ip="$(ssh_guest "tailscale ip -4 2>/dev/null" 2>/dev/null || true)"
+  if [[ -n "${ts_ip}" ]]; then
+    echo "Tailscale: http://${ts_ip}:${GUEST_CDP_PORT}/  (remote browser & chrome://inspect)"
+  fi
+fi
 echo "watch:     $("${QB_ROOT}/scripts/watch-chromebox.sh" status 2>/dev/null || echo down)"

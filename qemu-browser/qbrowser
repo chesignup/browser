@@ -15,7 +15,7 @@ Lifecycle:
   qbrowser stop                   Power off VM and close tunnel
   qbrowser restart                stop + start
   qbrowser status                 Show VM / services / CDP / noVNC status
-  qbrowser url                    Print the noVNC URL for your LAN PC
+  qbrowser url                    Print the web browser & noVNC URLs
   qbrowser ssh [cmd...]           SSH into the guest
   qbrowser logs                   Tail guest cloud-init / serial log
   qbrowser tunnel {up|down}       Manage the CDP SSH tunnel
@@ -23,6 +23,7 @@ Lifecycle:
   qbrowser snapshot {save|revert|status}  Single live snapshot (RAM+disk)
   qbrowser watch {up|down|status|tick}    Keep guest SSH + Chrome CDP alive
                                           (QMP reset if SSH dies; restart Chrome if CDP dies)
+  qbrowser deploy-guest           Deploy CDP bridge & web tab viewer to guest
 
 Control the browser (drives the SAME tab you see in noVNC):
   qbrowser ctl <verb> [args...]   Pass-through to human_browser, e.g.:
@@ -96,9 +97,17 @@ case "${cmd}" in
   tailscale) exec "${HERE}/scripts/tailscale.sh" "$@" ;;
   snapshot) exec "${HERE}/scripts/snapshot.sh" "$@" ;;
   watch)   exec "${HERE}/scripts/watch-chromebox.sh" "${1:-up}" ;;
+  deploy-guest) exec "${HERE}/scripts/deploy-guest.sh" ;;
   url)
+    echo "CDP web:          http://$(lan_ip):${GUEST_CDP_PORT}/  (browse tab / chrome://inspect)"
+    echo "viewer:           http://$(lan_ip):${VIEWER_PORT}/"
     echo "noVNC (desktop):  http://$(lan_ip):${NOVNC_PORT}/vnc.html"
-    echo "viewer (mobile):  http://$(lan_ip):${VIEWER_PORT}/"
+    if qemu_running && ssh_guest true >/dev/null 2>&1; then
+      ts_ip="$(ssh_guest "tailscale ip -4 2>/dev/null" 2>/dev/null || true)"
+      if [[ -n "${ts_ip}" ]]; then
+        echo "Tailscale:        http://${ts_ip}:${GUEST_CDP_PORT}/  (remote browser & chrome://inspect)"
+      fi
+    fi
     ;;
   logs)
     qemu_running || die "VM not running."

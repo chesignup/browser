@@ -56,7 +56,11 @@ case "${action}" in
     ssh_guest "tailscale status 2>&1" || true
     echo
     ip4="$(ssh_guest "tailscale ip -4 2>/dev/null" 2>/dev/null || true)"
-    [[ -n "${ip4}" ]] && log "Tailscale IPv4: ${ip4}  (reach noVNC at http://${ip4}:6080/vnc.html)"
+    if [[ -n "${ip4}" ]]; then
+      log "Tailscale IPv4: ${ip4}"
+      log "  Browser Tab: http://${ip4}:${GUEST_CDP_PORT}/  (browse remotely or use chrome://inspect)"
+      log "  noVNC:       http://${ip4}:${NOVNC_PORT}/vnc.html"
+    fi
     ;;
   status)
     ensure_installed

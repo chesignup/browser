@@ -3,114 +3,723 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>chromebox viewer</title>
+<title>Chromebox</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2244%22 fill=%22%234285f4%22/><circle cx=%2250%22 cy=%2250%22 r=%2222%22 fill=%22white%22/></svg>">
 <style>
-  :root { color-scheme: dark; }
+  :root {
+    --bg-main: #1e1f22;
+    --bg-tabs: #18191c;
+    --tab-inactive: #232428;
+    --tab-active: #313338;
+    --tab-hover: #2b2d31;
+    --text-main: #e0e2e8;
+    --text-muted: #949ba4;
+    --bar-bg: #2b2d31;
+    --input-bg: #1e1f22;
+    --input-border: #3f4248;
+    --accent: #5865f2;
+    --accent-hover: #4752c4;
+    --danger: #f23f43;
+    --success: #23a55a;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg-main: #f2f3f5;
+      --bg-tabs: #e3e5e8;
+      --tab-inactive: #ebedef;
+      --tab-active: #ffffff;
+      --tab-hover: #f8f9fa;
+      --text-main: #1f2328;
+      --text-muted: #5c6370;
+      --bar-bg: #ffffff;
+      --input-bg: #f2f3f5;
+      --input-border: #d0d7de;
+      --accent: #0969da;
+      --accent-hover: #0854b0;
+      --danger: #cf222e;
+      --success: #1a7f37;
+    }
+  }
+
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html,body { margin:0; height:100%; background:#111; font-family:system-ui,sans-serif; }
-  #bar { display:flex; gap:6px; padding:6px; background:#1c1c1c; align-items:center; }
-  #bar input { flex:1; min-width:0; padding:8px; border-radius:6px; border:1px solid #333; background:#222; color:#eee; font-size:16px; }
-  #bar button { padding:8px 10px; border-radius:6px; border:0; background:#3355dd; color:#fff; font-size:15px; }
-  #tabs { display:flex; gap:6px; padding:6px 6px 0; background:#151515; overflow-x:auto; white-space:nowrap; }
-  #tabs .tab { flex:0 0 auto; max-width:180px; overflow:hidden; text-overflow:ellipsis; padding:6px 10px; border-radius:6px 6px 0 0; background:#242424; color:#ccc; font-size:13px; border:1px solid #333; border-bottom:0; }
-  #tabs .tab.active { background:#3355dd; color:#fff; }
-  #tabs .newtab { flex:0 0 auto; padding:6px 10px; background:#242424; color:#8f8; border-radius:6px; border:1px solid #333; }
-  #stage { position:relative; height:calc(100% - 96px); display:flex; align-items:center; justify-content:center; overflow:hidden; }
-  #screen { max-width:100%; max-height:100%; touch-action:none; user-select:none; -webkit-user-drag:none; }
-  #kbd { position:absolute; opacity:0; pointer-events:none; height:0; width:0; }
-  #status { position:absolute; top:6px; left:8px; color:#8f8; font-size:12px; background:#0008; padding:2px 6px; border-radius:4px; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-main);
+    color: var(--text-main);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+  }
+
+  /* --- Tab Strip --- */
+  #tabstrip {
+    display: flex;
+    align-items: center;
+    background: var(--bg-tabs);
+    padding: 6px 8px 0 8px;
+    gap: 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    flex-shrink: 0;
+  }
+  #tabstrip::-webkit-scrollbar { display: none; }
+
+  .tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--tab-inactive);
+    color: var(--text-muted);
+    padding: 6px 10px;
+    border-radius: 8px 8px 0 0;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    max-width: 220px;
+    min-width: 90px;
+    transition: all 0.15s ease;
+    border-top: 2px solid transparent;
+  }
+  .tab:hover {
+    background: var(--tab-hover);
+    color: var(--text-main);
+  }
+  .tab.active {
+    background: var(--bar-bg);
+    color: var(--text-main);
+    border-top: 2px solid var(--accent);
+  }
+  .tab-icon {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+  }
+  .tab-icon img { width: 100%; height: 100%; object-fit: contain; }
+  .tab-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tab-close {
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 13px;
+    opacity: 0.6;
+    transition: all 0.1s;
+    margin-left: 2px;
+  }
+  .tab-close:hover {
+    opacity: 1;
+    background: rgba(255,255,255,0.15);
+    color: var(--danger);
+  }
+
+  .btn-newtab {
+    padding: 5px 9px;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .btn-newtab:hover {
+    background: var(--tab-hover);
+    color: var(--text-main);
+  }
+
+  /* --- Navigation / Omnibox Toolbar --- */
+  #toolbar {
+    display: flex;
+    align-items: center;
+    background: var(--bar-bg);
+    padding: 6px 10px;
+    gap: 8px;
+    border-bottom: 1px solid var(--input-border);
+    flex-shrink: 0;
+  }
+
+  .nav-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--text-main);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    transition: background 0.15s;
+    flex-shrink: 0;
+  }
+  .nav-btn:hover { background: rgba(128,128,128,0.18); }
+  .nav-btn:active { transform: scale(0.96); }
+
+  #omnibox-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: 20px;
+    padding: 0 12px;
+    height: 34px;
+    transition: border 0.15s, box-shadow 0.15s;
+  }
+  #omnibox-wrap:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(88,101,242,0.25);
+  }
+  .lock-icon {
+    font-size: 12px;
+    margin-right: 8px;
+    opacity: 0.6;
+  }
+  #omnibox {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text-main);
+    font-size: 13px;
+    width: 100%;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  .tool-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    height: 32px;
+    padding: 0 10px;
+    border-radius: 6px;
+    border: none;
+    background: var(--input-bg);
+    color: var(--text-main);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--input-border);
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .tool-btn:hover {
+    background: var(--tab-hover);
+    border-color: var(--accent);
+  }
+
+  /* --- Viewport & Stage --- */
+  #viewport-stage {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    overflow: hidden;
+    cursor: default;
+  }
+
+  #viewport-canvas {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    touch-action: none;
+    display: block;
+    outline: none;
+  }
+
+  /* Hidden input for mobile keyboard */
+  #mobile-kbd {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+    width: 0;
+    height: 0;
+    left: -1000px;
+    top: -1000px;
+  }
+
+  /* Badge indicator */
+  #status-badge {
+    position: absolute;
+    bottom: 10px;
+    right: 12px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 6px var(--success);
+  }
+  .dot.connecting { background: #e6a23c; box-shadow: 0 0 6px #e6a23c; }
+  .dot.error { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+
+  /* Info Modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(4px);
+    z-index: 999;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-box {
+    background: var(--bar-bg);
+    border: 1px solid var(--input-border);
+    border-radius: 12px;
+    padding: 20px;
+    max-width: 480px;
+    width: 90%;
+    color: var(--text-main);
+    box-shadow: 0 12px 30px rgba(0,0,0,0.5);
+  }
+  .modal-title { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
+  .modal-body { font-size: 13px; line-height: 1.6; color: var(--text-muted); }
+  .code-block {
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 13px;
+    color: var(--accent);
+    margin: 10px 0;
+    word-break: break-all;
+    user-select: all;
+  }
+  .modal-close {
+    margin-top: 16px;
+    padding: 8px 16px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    float: right;
+  }
 </style>
 </head>
 <body>
-  <div id="bar">
-    <button id="kbdBtn" title="keyboard">⌨</button>
-    <input id="url" placeholder="https://…" inputmode="url" autocomplete="off">
-    <button id="go">Go</button>
-    <button id="reload" title="reload">⟳</button>
+
+<div id="app">
+  <!-- Tabs -->
+  <div id="tabstrip">
+    <div id="tabs-container" style="display:flex;gap:4px;overflow-x:auto;"></div>
+    <button class="btn-newtab" id="btn-newtab" title="New Tab">+</button>
   </div>
-  <div id="tabs"></div>
-  <div id="stage">
-    <img id="screen" alt="remote tab" draggable="false">
-    <input id="kbd" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
-    <div id="status">connecting…</div>
+
+  <!-- Omnibox Toolbar -->
+  <div id="toolbar">
+    <button class="nav-btn" id="btn-back" title="Back">◀</button>
+    <button class="nav-btn" id="btn-fwd" title="Forward">▶</button>
+    <button class="nav-btn" id="btn-reload" title="Reload">⟳</button>
+
+    <div id="omnibox-wrap">
+      <span class="lock-icon">🔒</span>
+      <input type="text" id="omnibox" placeholder="Search or type URL" autocomplete="off" spellcheck="false">
+    </div>
+
+    <button class="tool-btn" id="btn-devtools" title="Open Full Chrome DevTools for this tab">
+      <span>🛠️</span> DevTools
+    </button>
+    <button class="tool-btn" id="btn-kbd" title="Toggle Mobile Keyboard">
+      <span>⌨️</span>
+    </button>
+    <button class="tool-btn" id="btn-info" title="Connect with native desktop Chrome">
+      <span>ℹ️</span> Native Chrome
+    </button>
   </div>
+
+  <!-- Live Screencast Viewport -->
+  <div id="viewport-stage" tabindex="0">
+    <canvas id="viewport-canvas"></canvas>
+    <input type="text" id="mobile-kbd" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div id="status-badge">
+      <div class="dot" id="status-dot"></div>
+      <span id="status-text">Connecting...</span>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Desktop Chrome Instructions -->
+<div class="modal-overlay" id="modal-info">
+  <div class="modal-box">
+    <div class="modal-title">Use with Native Desktop Chrome</div>
+    <div class="modal-body">
+      You can inspect and browse this tab directly inside your local desktop Google Chrome:
+      <ol style="padding-left: 20px; margin: 10px 0;">
+        <li>Open <code style="color:var(--accent);">chrome://inspect/#devices</code> in your local Chrome.</li>
+        <li>Under <b>Discover network targets</b>, click <b>Configure...</b></li>
+        <li>Add target address:
+          <div class="code-block" id="modal-target-host"></div>
+        </li>
+        <li>Your remote Chromebox tabs will appear automatically! Click <b>inspect</b>.</li>
+      </ol>
+      DevTools opens with live screencast, address bar, console, and full native interaction!
+    </div>
+    <button class="modal-close" onclick="document.getElementById('modal-info').classList.remove('open')">Got it</button>
+  </div>
+</div>
+
 <script>
-const img = document.getElementById('screen');
-const statusEl = document.getElementById('status');
-const kbd = document.getElementById('kbd');
-let ws, connected=false;
+(() => {
+  const canvas = document.getElementById('viewport-canvas');
+  const ctx = canvas.getContext('2d');
+  const stage = document.getElementById('viewport-stage');
+  const tabsContainer = document.getElementById('tabs-container');
+  const omnibox = document.getElementById('omnibox');
+  const statusDot = document.getElementById('status-dot');
+  const statusText = document.getElementById('status-text');
+  const mobileKbd = document.getElementById('mobile-kbd');
+  const devtoolsBtn = document.getElementById('btn-devtools');
+  const modalInfo = document.getElementById('modal-info');
+  const modalHost = document.getElementById('modal-target-host');
 
-function connect(){
-  ws = new WebSocket((location.protocol==='https:'?'wss':'ws')+'://'+location.host+'/ws');
-  ws.onopen = ()=>{ connected=true; statusEl.textContent='live'; };
-  ws.onclose = ()=>{ connected=false; statusEl.textContent='reconnecting…'; setTimeout(connect,1000); };
-  ws.onerror = ()=>{ statusEl.textContent='error'; };
-  ws.onmessage = (e)=>{
-    const m = JSON.parse(e.data);
-    if(m.frame){ img.src = 'data:image/jpeg;base64,'+m.frame; }
-    else if(m.tabs){ renderTabs(m.tabs, m.current); }
-    else if(m.error){ statusEl.textContent = m.error; }
+  modalHost.textContent = location.host;
+
+  let ws = null;
+  let activeTabId = null;
+  let tabsList = [];
+  let deviceW = 1920;
+  let deviceH = 1080;
+  let imgBitmap = new Image();
+  let connected = false;
+
+  // Frame rendering and ack backpressure
+  imgBitmap.onload = () => {
+    canvas.width = deviceW;
+    canvas.height = deviceH;
+    ctx.drawImage(imgBitmap, 0, 0, deviceW, deviceH);
   };
-}
 
-const tabsEl = document.getElementById('tabs');
-function renderTabs(tabs, current){
-  tabsEl.innerHTML='';
-  tabs.forEach((t,i)=>{
-    const d=document.createElement('div');
-    d.className='tab'+(t.id===current?' active':'');
-    d.textContent=(t.title||t.url||('tab '+(i+1)));
-    d.title=t.url||'';
-    d.onclick=()=>send({t:'select_tab', id:t.id});
-    tabsEl.appendChild(d);
-  });
-  const nt=document.createElement('div');
-  nt.className='newtab'; nt.textContent='+';
-  nt.onclick=()=>send({t:'new_tab'});
-  tabsEl.appendChild(nt);
-}
-function send(o){ if(connected) ws.send(JSON.stringify(o)); }
-
-// Map a pointer event to normalized coords over the displayed image.
-function norm(ev){
-  const r = img.getBoundingClientRect();
-  const cx = (ev.clientX ?? (ev.touches&&ev.touches[0].clientX));
-  const cy = (ev.clientY ?? (ev.touches&&ev.touches[0].clientY));
-  return { nx: Math.min(1,Math.max(0,(cx-r.left)/r.width)),
-           ny: Math.min(1,Math.max(0,(cy-r.top)/r.height)) };
-}
-
-let dragging=false, moved=false, last=null;
-img.addEventListener('pointerdown', (ev)=>{ ev.preventDefault(); dragging=true; moved=false; last=norm(ev); const p=norm(ev); send({t:'down',...p}); });
-img.addEventListener('pointermove', (ev)=>{
-  if(!dragging) return; ev.preventDefault();
-  const p=norm(ev);
-  const dy=(last.ny-p.ny)* (img.getBoundingClientRect().height);
-  const dx=(last.nx-p.nx)* (img.getBoundingClientRect().width);
-  if(Math.abs(dy)+Math.abs(dx)>3){ moved=true; send({t:'scroll', nx:p.nx, ny:p.ny, dx:dx, dy:dy}); last=p; }
-});
-img.addEventListener('pointerup', (ev)=>{
-  if(!dragging) return; ev.preventDefault(); dragging=false;
-  const p=norm(ev);
-  if(!moved){ send({t:'click',...p}); }
-  else { send({t:'up',...p}); }
-});
-
-// Keyboard: toggle hidden input focus; forward text + Enter/Backspace.
-document.getElementById('kbdBtn').onclick = ()=>{ kbd.value=''; kbd.focus(); };
-kbd.addEventListener('input', ()=>{ if(kbd.value){ send({t:'text', text:kbd.value}); kbd.value=''; } });
-kbd.addEventListener('keydown', (e)=>{
-  if(['Enter','Backspace','Tab','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Escape'].includes(e.key)){
-    e.preventDefault(); send({t:'key', key:e.key});
+  function setStatus(state, msg) {
+    statusDot.className = 'dot ' + (state || '');
+    statusText.textContent = msg;
   }
-});
 
-// URL bar
-document.getElementById('go').onclick = ()=>{ let u=document.getElementById('url').value.trim(); if(u){ if(!/^https?:/.test(u)) u='https://'+u; send({t:'nav', url:u}); } };
-document.getElementById('url').addEventListener('keydown',(e)=>{ if(e.key==='Enter') document.getElementById('go').click(); });
-document.getElementById('reload').onclick = ()=> send({t:'reload'});
+  function connect() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${proto}//${location.host}/ws/viewer`);
 
-connect();
+    ws.onopen = () => {
+      connected = true;
+      setStatus('', 'Live (CDP)');
+    };
+
+    ws.onclose = () => {
+      connected = false;
+      setStatus('connecting', 'Reconnecting...');
+      setTimeout(connect, 1500);
+    };
+
+    ws.onerror = () => {
+      setStatus('error', 'Disconnected');
+    };
+
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        handleMessage(msg);
+      } catch (err) {
+        console.error("WS error:", err);
+      }
+    };
+  }
+
+  function send(obj) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(obj));
+    }
+  }
+
+  function handleMessage(msg) {
+    if (msg.type === 'frame') {
+      if (msg.deviceWidth && msg.deviceHeight) {
+        deviceW = msg.deviceWidth;
+        deviceH = msg.deviceHeight;
+      }
+      imgBitmap.src = 'data:image/jpeg;base64,' + msg.data;
+      // Immediately acknowledge frame so Chrome sends next frame smoothly
+      if (msg.sessionId) {
+        send({ type: 'ack', sessionId: msg.sessionId });
+      }
+    } else if (msg.type === 'tabs') {
+      tabsList = msg.tabs || [];
+      activeTabId = msg.active || activeTabId;
+      renderTabs();
+      updateActiveTabInfo();
+    } else if (msg.type === 'navigated') {
+      if (msg.url) {
+        omnibox.value = msg.url;
+      }
+    }
+  }
+
+  function renderTabs() {
+    tabsContainer.innerHTML = '';
+    tabsList.forEach((t) => {
+      const tabEl = document.createElement('div');
+      const isActive = t.id === activeTabId;
+      tabEl.className = 'tab' + (isActive ? ' active' : '');
+      tabEl.title = t.url || t.title;
+
+      const icon = document.createElement('div');
+      icon.className = 'tab-icon';
+      if (t.favicon) {
+        const img = document.createElement('img');
+        img.src = t.favicon;
+        img.onerror = () => { icon.textContent = '🌐'; };
+        icon.appendChild(img);
+      } else {
+        icon.textContent = '🌐';
+      }
+
+      const title = document.createElement('div');
+      title.className = 'tab-title';
+      title.textContent = t.title || 'about:blank';
+
+      const close = document.createElement('div');
+      close.className = 'tab-close';
+      close.innerHTML = '&times;';
+      close.onclick = (e) => {
+        e.stopPropagation();
+        send({ type: 'close_tab', id: t.id });
+      };
+
+      tabEl.appendChild(icon);
+      tabEl.appendChild(title);
+      tabEl.appendChild(close);
+
+      tabEl.onclick = () => {
+        if (activeTabId !== t.id) {
+          activeTabId = t.id;
+          renderTabs();
+          send({ type: 'select_tab', id: t.id });
+          updateActiveTabInfo();
+        }
+      };
+
+      tabsContainer.appendChild(tabEl);
+    });
+  }
+
+  function updateActiveTabInfo() {
+    const cur = tabsList.find(t => t.id === activeTabId);
+    if (cur && cur.url && document.activeElement !== omnibox) {
+      omnibox.value = cur.url;
+    }
+    if (activeTabId) {
+      devtoolsBtn.style.display = 'flex';
+      devtoolsBtn.onclick = () => {
+        window.open(`/devtools/inspector.html?ws=${location.host}/devtools/page/${activeTabId}`, '_blank');
+      };
+    }
+  }
+
+  // Omnibox Navigation
+  omnibox.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const url = omnibox.value.trim();
+      if (url) {
+        send({ type: 'navigate', url: url });
+        stage.focus();
+      }
+    }
+  });
+
+  document.getElementById('btn-back').onclick = () => send({ type: 'history', delta: -1 });
+  document.getElementById('btn-fwd').onclick = () => send({ type: 'history', delta: 1 });
+  document.getElementById('btn-reload').onclick = () => send({ type: 'reload' });
+  document.getElementById('btn-newtab').onclick = () => {
+    const url = prompt('Enter URL for new tab (leave empty for blank):', 'https://www.yad2.co.il');
+    if (url !== null) {
+      send({ type: 'new_tab', url: url || 'about:blank' });
+    }
+  };
+  document.getElementById('btn-kbd').onclick = () => {
+    mobileKbd.focus();
+  };
+  document.getElementById('btn-info').onclick = () => {
+    modalInfo.classList.add('open');
+  };
+
+  // Coordinate mapping from screen CSS pixels to Chrome viewport device pixels
+  function getCanvasCoords(e) {
+    const rect = canvas.getBoundingClientRect();
+    const cx = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const cy = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+
+    const nx = Math.max(0, Math.min(1, (cx - rect.left) / rect.width));
+    const ny = Math.max(0, Math.min(1, (cy - rect.top) / rect.height));
+
+    return {
+      x: nx * deviceW,
+      y: ny * deviceH
+    };
+  }
+
+  // Pointer & Mouse interactions
+  let isDown = false;
+  let lastMoveTime = 0;
+
+  canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    stage.focus();
+    isDown = true;
+    const pos = getCanvasCoords(e);
+    const btnMap = { 0: 'left', 1: 'middle', 2: 'right' };
+    const btn = btnMap[e.button] || 'left';
+    send({
+      type: 'mouse',
+      event: 'mousePressed',
+      x: pos.x,
+      y: pos.y,
+      button: btn,
+      clickCount: e.detail || 1
+    });
+  });
+
+  canvas.addEventListener('pointerup', (e) => {
+    e.preventDefault();
+    isDown = false;
+    const pos = getCanvasCoords(e);
+    const btnMap = { 0: 'left', 1: 'middle', 2: 'right' };
+    const btn = btnMap[e.button] || 'left';
+    send({
+      type: 'mouse',
+      event: 'mouseReleased',
+      x: pos.x,
+      y: pos.y,
+      button: btn,
+      clickCount: 1
+    });
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    const now = performance.now();
+    if (now - lastMoveTime < 25) return; // throttle to ~40fps
+    lastMoveTime = now;
+    const pos = getCanvasCoords(e);
+    send({
+      type: 'mouse',
+      event: 'mouseMoved',
+      x: pos.x,
+      y: pos.y,
+      button: 'none'
+    });
+  });
+
+  // Intercept right click so Chrome gets it directly
+  canvas.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+  });
+
+  // Mouse wheel scrolling
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const pos = getCanvasCoords(e);
+    send({
+      type: 'mouse',
+      event: 'mouseWheel',
+      x: pos.x,
+      y: pos.y,
+      deltaX: e.deltaX,
+      deltaY: e.deltaY
+    });
+  }, { passive: false });
+
+  // Keyboard handling on viewport stage
+  stage.addEventListener('keydown', (e) => {
+    if (document.activeElement === omnibox) return;
+    if (['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+      e.preventDefault();
+    }
+    send({
+      type: 'key',
+      event: 'rawKeyDown',
+      key: e.key,
+      code: e.code,
+      text: e.key.length === 1 ? e.key : '',
+      keyCode: e.keyCode
+    });
+    if (e.key.length === 1) {
+      send({
+        type: 'key',
+        event: 'char',
+        key: e.key,
+        code: e.code,
+        text: e.key,
+        keyCode: e.keyCode
+      });
+    }
+  });
+
+  stage.addEventListener('keyup', (e) => {
+    if (document.activeElement === omnibox) return;
+    send({
+      type: 'key',
+      event: 'keyUp',
+      key: e.key,
+      code: e.code,
+      keyCode: e.keyCode
+    });
+  });
+
+  // Mobile virtual keyboard input
+  mobileKbd.addEventListener('input', (e) => {
+    if (mobileKbd.value) {
+      send({ type: 'insertText', text: mobileKbd.value });
+      mobileKbd.value = '';
+    }
+  });
+
+  connect();
+})();
 </script>
 </body>
 </html>
