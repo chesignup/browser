@@ -11,9 +11,11 @@ operable by a Cursor agent or ChatGPT (MCP).
 | `qemu-browser/` | Ubuntu cloud VM + Chrome + noVNC + mobile tab viewer |
 | `agent-container/` | Cursor CLI in tmux + Tailscale + `gbrowser` |
 | `mcp-container/` | Stateful MCP (`browser_*` tools) for ChatGPT plugins |
-| `skills/` | Agent skills: `browser-vm`, `yad2`, `yad2-research`, `repo-git-sync` |
-| `scrape/` | Deterministic yad2 feed + detail scrape + geocode/yield |
+| `skills/` | Agent skills: `browser-vm`, `yad2`, `yad2-research`, `facebook-marketplace`, `repo-git-sync` |
+| `scrape/` | Deterministic yad2 feed + detail scrape + geocode/yield; `scrape/facebook/` Docker CDP scraper |
 | `data/yad2/` | Scooped listings + `research/FINDINGS.md` |
+| `data/facebook/` | Facebook Marketplace MacBook scrape dumps (JSON/CSV/MD) |
+| `data/macbooks/` | Merged Yad2 + Facebook MacBook dataset (`COMPREHENSIVE_MACBOOKS.md`) |
 | `deploy/bootstrap.sh` | Fresh Ubuntu installer |
 
 ## Quick start (existing machine)
@@ -38,6 +40,19 @@ python3 scrape/rent/scrape_watchdog.py --workdir scrape/rent --kind rent --batch
 
 Skill docs: `skills/yad2/SKILL.md` (scrape) and `skills/yad2-research/SKILL.md` (yield pairing).
 GitHub updates: `skills/repo-git-sync/SKILL.md`.
+
+## Facebook Marketplace
+
+Uses the logged-in Chromebox profile over CDP (same tunnel as yad2). Skill:
+`skills/facebook-marketplace/SKILL.md`. Container scraper:
+
+```bash
+cd scrape/facebook && docker build -t fb-marketplace-scraper .
+docker run --rm --network host -v "$PWD/../../data/facebook:/data/output" fb-marketplace-scraper
+```
+
+Merge with Yad2 Mac listings: `python3 skills/facebook-marketplace/scripts/merge_datasets.py`.
+Published data: `data/facebook/` and `data/macbooks/`.
 
 ## Viewers
 
