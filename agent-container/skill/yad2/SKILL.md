@@ -7,7 +7,9 @@ description: >-
   to find apartments to rent or buy in Israel, cars, or used items on yad2 / לוח יד2.
   Prefer the deterministic CDP scrape pipeline for bulk listing collection; navigate
   with UI clicks for interactive browsing; hand off captcha to a human viewer when
-  the watchdog cannot clear it.
+  the watchdog cannot clear it. After any live item check: still showing → mark
+  listing_status=active and refresh date_last_seen_active; gone/sold → assumed_sold
+  (stale last_seen alone is not sold).
 ---
 
 # Using yad2.co.il
@@ -218,6 +220,10 @@ Watchdog behavior (always prefer this for long runs):
 - `listing_details.json` / `.csv` — same enriched rows (source of truth for merge)
 - `apartments_for_sale.md` or `apartments_for_rent.md`
 - `scrape_progress.json` — `{done, errors, total, updated_at}`
+
+After both sale and rent details are complete: host `watch-copy.sh` copies dumps
+to `/home/s/opt/yad2/` and can run geocode + match. Yield pairing is **not** LLM
+work — see skill **`yad2-research`**. Publish dumps with **`repo-git-sync`**.
 
 ### Mandatory `description` (free text of the ad)
 

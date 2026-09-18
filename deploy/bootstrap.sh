@@ -55,14 +55,17 @@ usermod -aG kvm,docker "${INSTALL_USER}" || true
 setfacl -m "u:${INSTALL_USER}:rw" /dev/kvm 2>/dev/null || true
 systemctl enable --now docker
 
-log "Firewall (LAN noVNC + mobile viewer + agent SSH)"
+log "Firewall (LAN noVNC + mobile viewer + CDP bridge + agent SSH)"
 ufw allow OpenSSH || true
 ufw allow from 10.0.0.0/8 to any port 6080 proto tcp || true
 ufw allow from 10.0.0.0/8 to any port 6081 proto tcp || true
+ufw allow from 10.0.0.0/8 to any port 9222 proto tcp || true
 ufw allow from 172.16.0.0/12 to any port 6080 proto tcp || true
 ufw allow from 172.16.0.0/12 to any port 6081 proto tcp || true
+ufw allow from 172.16.0.0/12 to any port 9222 proto tcp || true
 ufw allow from 192.168.0.0/16 to any port 6080 proto tcp || true
 ufw allow from 192.168.0.0/16 to any port 6081 proto tcp || true
+ufw allow from 192.168.0.0/16 to any port 9222 proto tcp || true
 ufw allow 2223/tcp || true
 ufw --force enable || true
 

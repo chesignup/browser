@@ -7,7 +7,9 @@ description: >-
   to find apartments to rent or buy in Israel, cars, or used items on yad2 / לוח יד2.
   Prefer the deterministic CDP scrape pipeline for bulk listing collection; navigate
   with UI clicks for interactive browsing; hand off captcha to a human viewer when
-  the watchdog cannot clear it.
+  the watchdog cannot clear it. After any live item check: still showing → mark
+  listing_status=active and refresh date_last_seen_active; gone/sold → assumed_sold
+  (stale last_seen alone is not sold).
 ---
 
 # Using yad2.co.il
@@ -254,6 +256,20 @@ A pair is a match only if **both**:
 2. **Features:** rooms ±0.5, sqm ±20%, elevator / ממ״ד / parking equal
 
 Then `ratio = max(monthly rent among matches) × 12 / sale_price`. Same JSON in → same CSV out (token-sorted, stable ties).
+
+## Live status affirmation (sold vs active) — REQUIRED
+
+When you open a Yad2 item page (or confirm it is gone), **persist status** — do not
+only chat. See also skills `yad2-listings` / `yad2-scraper`.
+
+| Live observation | Persist |
+|------------------|---------|
+| Item page still shows the ad | `listing_status=active`; bump `date_last_seen_active` to now UTC; clear `assumed_sold_*` |
+| 404 / מודעה לא קיימת / removed / sold | `listing_status=assumed_sold` via scrape `pipeline.assumed_sold.mark_token_assumed_sold` (or document for hourly); keep last real `date_last_seen_active` |
+| Captcha / CDP failure | Leave status unchanged |
+
+Stale `date_last_seen_active` or absence from a **partial** feed page is **not** sold.
+Only detail-gone / explicit sold / miss from a **complete** ≤₪5M catch-up feed is.
 
 ## Interactive workflow (small searches)
 
