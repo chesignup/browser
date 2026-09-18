@@ -98,17 +98,54 @@ class CDPConnection:
 
 
 async def get_or_create_page(session: aiohttp.ClientSession, cdp_base: str) -> dict:
-    """Finds an existing Facebook tab or reuses/creates a page."""
-    with urllib.request.urlopen(f"{cdp_base}/json") as r:
+    """Find an existing Facebook tab, else open a *new* tab (never steal Yad2)."""
+    with urllib.request.urlopen(f"{cdp_base}/json/list", timeout=8) as r:
         targets = json.loads(r.read().decode())
     pages = [t for t in targets if t.get("type") == "page"]
-    fb_page = next((p for p in pages if "facebook.com" in p.get("url", "")), None)
+    fb_page = next((p for p in pages if "facebook.com" in (p.get("url") or "")), None)
     if fb_page:
         return fb_page
-    if pages:
-        return pages[0]
-    with urllib.request.urlopen(f"{cdp_base}/json/new") as r:
-        return json.loads(r.read().decode())
+
+    # Prefer Target.createTarget via browser websocket — /json/new often 500 via proxy.
+    with urllib.request.urlopen(f"{cdp_base}/json/version", timeout=8) as r:
+        ver = json.loads(r.read().decode())
+    browser_ws = ver.get("webSocketDebuggerUrl") or ""
+    browser_ws = re.sub(r"ws://[^/]+", cdp_base.replace("http://", "ws://"), browser_ws)
+    try:
+        async with session.ws_connect(browser_ws, max_msg_size=5_000_000) as ws:
+            await ws.send_json(
+                {
+                    "id": 1,
+                    "method": "Target.createTarget",
+                    "params": {"url": "about:blank"},
+                }
+            )
+            target_id = None
+            while True:
+                msg = await asyncio.wait_for(ws.receive_json(), timeout=20)
+                if msg.get("id") == 1:
+                    if "error" in msg:
+                        raise RuntimeError(msg["error"])
+                    target_id = (msg.get("result") or {}).get("targetId")
+                    break
+        if target_id:
+            await asyncio.sleep(0.8)
+            with urllib.request.urlopen(f"{cdp_base}/json/list", timeout=8) as r:
+                targets = json.loads(r.read().decode())
+            hit = next((t for t in targets if t.get("id") == target_id), None)
+            if hit:
+                return hit
+    except Exception as e:
+        log.warning("Target.createTarget failed (%s); trying /json/new", e)
+
+    try:
+        with urllib.request.urlopen(f"{cdp_base}/json/new?about:blank", timeout=10) as r:
+            return json.loads(r.read().decode())
+    except Exception as e:
+        raise RuntimeError(
+            "Could not open a dedicated Facebook Marketplace tab without "
+            f"stealing an existing page: {e}"
+        ) from e
 
 
 JS_EXTRACT_CARDS = r"""
@@ -262,9 +299,21 @@ JS_EXTRACT_ITEM_DETAILS = r"""
     }
   }
 
+  // Sold / unavailable signals (Hebrew Marketplace badge "נמכר" is authoritative)
+  const head = ((h1 && h1.innerText) || title || '') + '\n' + lines.slice(0, 8).join('\n');
+  const soldBadge = /נמכר\s*[·•|]/.test(title) || /^נמכר\b/.test(title.trim());
+  const sold = soldBadge
+    || /no longer available|isn['\u2019]?t available|listing not found|page not found|this listing is sold/i.test(head);
+  const gone = sold || /content isn['\u2019]?t available|לא זמין יותר|המודעה לא/i.test(fullText.slice(0, 1500));
+  const path = location.pathname || '';
+  const itemId = (path.match(/\/marketplace\/item\/(\d+)/) || [])[1] || '';
+  const isItemPage = !!itemId;
+  const isSearchPage = /\/marketplace\/search\//.test(path)
+    || (!isItemPage && /\/marketplace\//.test(path) && !/\/item\//.test(path));
+
   return {
-    id: (window.location.pathname.match(/\/item\/(\d+)/) || [])[1] || '',
-    title,
+    id: itemId,
+    title: title.replace(/^נמכר\s*[·•|]\s*/, '').trim(),
     price,
     price_raw: priceLine,
     condition,
@@ -274,10 +323,53 @@ JS_EXTRACT_ITEM_DETAILS = r"""
     description,
     latitude: lat,
     longitude: lon,
-    link: window.location.href.split('?')[0]
+    link: window.location.href.split('?')[0],
+    sold: !!sold,
+    soldBadge: !!soldBadge,
+    gone: !!gone,
+    isItemPage,
+    isSearchPage,
+    href: location.href,
   };
 })()
 """
+
+
+PROPERTY_CATEGORIES = {
+    "propertyrentals": "propertyrentals",
+    "rent": "propertyrentals",
+    "rental": "propertyrentals",
+    "השכרה": "propertyrentals",
+    "propertysales": "propertysales",
+    "sale": "propertysales",
+    "forsale": "propertysales",
+    "מכירה": "propertysales",
+}
+
+
+def marketplace_search_url(query: str, category: str | None = None) -> str:
+    """Build Marketplace URL for goods search or property category feeds."""
+    cat = (category or "").strip().lower()
+    cat = PROPERTY_CATEGORIES.get(cat, cat)
+    q = urllib.parse.quote(query) if query else ""
+    if cat in ("propertyrentals", "propertysales"):
+        base = f"https://www.facebook.com/marketplace/category/{cat}"
+        return f"{base}?query={q}" if q else base
+    if cat and cat not in ("search", "all", ""):
+        base = f"https://www.facebook.com/marketplace/category/{urllib.parse.quote(cat)}"
+        return f"{base}?query={q}" if q else base
+    return f"https://www.facebook.com/marketplace/search/?query={q or urllib.parse.quote('macbook')}"
+
+
+def infer_listing_type(query: str, category: str | None) -> str:
+    cat = PROPERTY_CATEGORIES.get((category or "").strip().lower(), (category or "").strip().lower())
+    if cat == "propertyrentals":
+        return "rent"
+    if cat == "propertysales":
+        return "sale"
+    if re.search(r"mac|מקבוק", query or "", re.I):
+        return "macbook"
+    return "marketplace_item"
 
 
 def enrich_specs(item: dict) -> dict:
@@ -347,6 +439,49 @@ def enrich_specs(item: dict) -> dict:
     return item
 
 
+async def _open_item_details(cdp: CDPConnection, item_id: str, item_url: str, item_delay: float) -> Optional[dict]:
+    """Open Marketplace item page; recover when FB redirects to search/results."""
+    candidates = [
+        item_url,
+        f"https://www.facebook.com/marketplace/item/{item_id}/",
+        f"https://www.facebook.com/marketplace/item/{item_id}",
+        f"https://www.facebook.com/marketplace/item/{item_id}/?ref=search",
+    ]
+    details = None
+    for url in candidates:
+        try:
+            await cdp.call("Page.navigate", {"url": url}, timeout=10.0)
+            await asyncio.sleep(item_delay)
+            details_raw = await cdp.call(
+                "Runtime.evaluate",
+                {"expression": JS_EXTRACT_ITEM_DETAILS, "returnByValue": True},
+                timeout=10.0,
+            )
+            if not isinstance(details_raw, dict) or details_raw.get("subtype"):
+                continue
+            if details_raw.get("isSearchPage") or not details_raw.get("isItemPage"):
+                # Try clicking the card for this id if present on the results page
+                click = f"""(() => {{
+                  const a = Array.from(document.querySelectorAll('a[href*="/marketplace/item/{item_id}"]'))[0];
+                  if (a) {{ a.click(); return true; }}
+                  return false;
+                }})()"""
+                clicked = await cdp.call("Runtime.evaluate", {"expression": click, "returnByValue": True})
+                if clicked:
+                    await asyncio.sleep(item_delay)
+                    details_raw = await cdp.call(
+                        "Runtime.evaluate",
+                        {"expression": JS_EXTRACT_ITEM_DETAILS, "returnByValue": True},
+                        timeout=10.0,
+                    )
+            if isinstance(details_raw, dict) and details_raw.get("isItemPage"):
+                return details_raw
+            details = details_raw if isinstance(details_raw, dict) else details
+        except Exception as err:
+            log.warning("  navigate/extract %s via %s failed: %s", item_id, url, err)
+    return details
+
+
 async def run_marketplace_scrape(
     query: str,
     output_dir: Path,
@@ -354,9 +489,12 @@ async def run_marketplace_scrape(
     max_scrolls: int = 8,
     item_delay: float = 2.0,
     cdp_base: str = DEFAULT_CDP_BASE,
+    category: str | None = None,
 ) -> List[dict]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    slug = re.sub(r"[^a-zA-Z0-9]+", "_", query).strip("_").lower() or "items"
+    listing_type = infer_listing_type(query, category)
+    slug_bits = [category or "", query or listing_type]
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", "_".join(slug_bits)).strip("_").lower() or "items"
 
     async with aiohttp.ClientSession() as http_session:
         target = await get_or_create_page(http_session, cdp_base)
@@ -366,9 +504,9 @@ async def run_marketplace_scrape(
         async with http_session.ws_connect(ws_url, max_msg_size=0) as ws:
             cdp = CDPConnection(ws)
             try:
-                # 1. Search Query
-                search_url = f"https://www.facebook.com/marketplace/search/?query={urllib.parse.quote(query)}"
-                log.info("Navigating to Facebook Marketplace search: %s", search_url)
+                # 1. Search / category feed
+                search_url = marketplace_search_url(query, category)
+                log.info("Navigating to Facebook Marketplace: %s", search_url)
                 await cdp.call("Page.navigate", {"url": search_url})
                 await asyncio.sleep(4.0)
 
@@ -403,25 +541,16 @@ async def run_marketplace_scrape(
                     item_url = feed_item["link"]
                     log.info("[%d/%d] Fetching item %s: %s", idx + 1, len(feed_list), item_id, feed_item.get("title", "")[:40])
 
-                    details = None
-                    try:
-                        await cdp.call("Page.navigate", {"url": item_url}, timeout=10.0)
-                        await asyncio.sleep(item_delay)
-                        details_raw = await cdp.call(
-                            "Runtime.evaluate",
-                            {"expression": JS_EXTRACT_ITEM_DETAILS, "returnByValue": True},
-                            timeout=10.0,
-                        )
-                        if isinstance(details_raw, dict) and not details_raw.get("subtype"):
-                            details = details_raw
-                    except Exception as err:
-                        log.warning("  Failed to extract item %s: %s", item_id, err)
+                    details = await _open_item_details(cdp, item_id, item_url, item_delay)
+                    if details and details.get("isSearchPage") and not details.get("isItemPage"):
+                        log.warning("  Item %s: still on search/results after recovery — skipping detail", item_id)
 
+                    sold = bool(details and details.get("isItemPage") and (details.get("sold") or details.get("gone")))
                     rec = {
                         "listing_id": item_id,
                         "token": item_id,
                         "origin": "facebook",
-                        "listing_type": "macbook" if "mac" in query.lower() else "marketplace_item",
+                        "listing_type": listing_type,
                         "link": item_url,
                         "title": (details and details.get("title")) or feed_item.get("title") or "",
                         "price": (details and details.get("price")) if (details and details.get("price") is not None) else feed_item.get("price"),
@@ -430,19 +559,28 @@ async def run_marketplace_scrape(
                         "condition": (details and details.get("condition")) or "",
                         "description": (details and details.get("description")) or "",
                         "date_advertised": (details and details.get("posted")) or "",
-                        "date_last_seen_active": now_iso,
+                        "date_last_seen_active": now_iso if not sold else None,
+                        "listing_status": "assumed_sold" if sold else "active",
+                        "assumed_sold_reason": (
+                            "facebook_sold_badge" if details and details.get("sold") else "detail_page_gone"
+                        ) if sold else None,
                         "latitude": details.get("latitude") if details else None,
                         "longitude": details.get("longitude") if details else None,
                         "series": (details and details.get("attributes", {}).get("קו מוצרים")) or "",
-                        "manufacturer": "Apple" if "mac" in query.lower() else "",
+                        "manufacturer": "Apple" if listing_type == "macbook" else "",
                         "processor": (details and details.get("attributes", {}).get("מעבד")) or "",
                         "ram": (details and details.get("attributes", {}).get("RAM")) or "",
                         "storage": (details and details.get("attributes", {}).get("Storage")) or "",
                         "screen_size": (details and details.get("attributes", {}).get("גודל מסך")) or "",
                         "views": None,
                         "ad_number": None,
-                        "error": None,
+                        "error": None if (details and details.get("isItemPage")) else "facebook_redirect_non_item",
+                        "gone": sold,
+                        "category": category or "",
                     }
+                    if sold:
+                        # Keep last real active sighting; do not refresh last_seen on sold page
+                        rec.pop("date_last_seen_active", None)
                     rec = enrich_specs(rec)
                     detailed_records.append(rec)
 
@@ -502,7 +640,12 @@ def _save_outputs(records: List[dict], output_dir: Path, slug: str):
 
 def main():
     parser = argparse.ArgumentParser(description="Scrape Facebook Marketplace via Chromebox CDP")
-    parser.add_argument("--query", default="macbook", help="Search query (e.g. 'macbook', 'apartments')")
+    parser.add_argument("--query", default="macbook", help="Search query (e.g. 'macbook', 'תל אביב')")
+    parser.add_argument(
+        "--category",
+        default="",
+        help="Marketplace category: propertyrentals|propertysales|search (default search)",
+    )
     parser.add_argument("--output-dir", default="/home/s/opt/yad2/facebook", help="Output directory")
     parser.add_argument("--max-items", type=int, default=30, help="Maximum items to scrape")
     parser.add_argument("--max-scrolls", type=int, default=8, help="Maximum feed scrolls")
@@ -517,6 +660,7 @@ def main():
         max_scrolls=args.max_scrolls,
         item_delay=args.delay,
         cdp_base=args.cdp_base,
+        category=args.category or None,
     ))
 
 
