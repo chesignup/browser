@@ -7,7 +7,7 @@ description: >-
   to find apartments to rent or buy in Israel, cars, or used items on yad2 / לוח יד2.
   Prefer the deterministic CDP scrape pipeline for bulk listing collection; navigate
   with UI clicks for interactive browsing; hand off captcha to a human viewer when
-  the watchdog cannot clear it. After any live item check: still showing → mark
+  the watchdog cannot clear it. Yad2 Market text search may 500 (אופס תקלה); fall back to Facebook. After any live item check: still showing → mark
   listing_status=active and refresh date_last_seen_active; gone/sold → assumed_sold
   (stale last_seen alone is not sold).
 ---
@@ -294,9 +294,15 @@ Type Hebrew place name → snapshot → **click** the suggestion (do not only En
 
 - Same as rent but `/realestate/forsale`. Price = purchase price.
 
-## Task: used Mac / MacBook · cars
+## Task: used Mac / MacBook · cars · climbing shoes · other products
 
-- Second-hand: `מוצרים` → laptops / `macbook`. Cars: `רכב` → `מכוניות`.
+- Second-hand: `מוצרים` / Yad2 Market (`/market`). Cars: `רכב` → `מכוניות`.
+- **Market search query param must be `q=`**, not `query=`:
+  - Works: `https://www.yad2.co.il/market/search?q=נעלי%20טיפוס`
+  - Breaks (Yad2 shows `אופס... תקלה!`): `…/market/search?query=…`
+- Prefer UI search or the `q=` URL. Live-check item pages before recommending.
+- Mac bulk scrape: category URLs under `/products/computers-…` and/or
+  `/market/search?q=macbook` (see `mac-listings/scrape/yad2_macbooks.py`).
 
 ## Hebrew glossary
 
