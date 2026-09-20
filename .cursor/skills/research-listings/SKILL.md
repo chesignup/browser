@@ -63,6 +63,7 @@ matching card. With `gbrowser` manually:
 | **Office rentals** | `yad2-listings/offices/listings_geo.json` (sqm + description; TLV / BB / PT / RG / Givatayim) |
 | FB office rentals | `yad2-listings/offices/facebook/` |
 | FB real estate dumps | `yad2-listings/facebook/facebook_realestate_listings.json` |
+| FB apartment groups | `yad2-listings/facebook/groups/` (whole-place; no roommates/sublets) |
 
 ## Office rentals (Yad2 commercial)
 
@@ -97,3 +98,10 @@ Also: `facebook-marketplace` skill (`--category propertyrentals|propertysales`).
 ## Chromebox
 
 Skill `browser-vm-remote` / `gbrowser tunnel status`.
+
+### Captcha HITL (required)
+
+If Yad2/Facebook hits Press & Hold / `validate.perfdrive` / Radware: **stop**,
+message the user to open **http://100.92.122.70:6081/** and clear it on the
+open tab, then wait. Do not re-nav or open more Yad2 tabs. Details:
+`browser-vm-remote` → “Captcha → human-in-the-loop”.

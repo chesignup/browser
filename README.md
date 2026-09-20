@@ -54,6 +54,11 @@ docker run --rm --network host -v "$PWD/../../data/facebook:/data/output" fb-mar
 Merge with Yad2 Mac listings: `python3 skills/facebook-marketplace/scripts/merge_datasets.py`.
 Published data: `data/facebook/` and `data/macbooks/`.
 
+Apartment **Facebook groups** (whole-place rent/sale, Ramat Gan / Givatayim) and
+**office** Marketplace scrapes publish under the
+[`yad2-listings`](https://github.com/chesignup/yad2-listings) repo:
+`facebook/groups/` and `offices/facebook/`. See `skills/facebook-marketplace/SKILL.md`.
+
 ## Viewers
 
 - **Remote Web Browser & DevTools (Recommended):** port **9222** (`http://<tailscale-ip>:9222/` or `http://<host-lan>:9222/`) — interactive Chrome tab strip, Omnibox address bar, real-time CDP screencast, mouse/touch/keyboard, and direct integration with native desktop `chrome://inspect`.

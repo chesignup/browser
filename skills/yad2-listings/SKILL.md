@@ -5,7 +5,8 @@ description: >-
   Includes past_deals, searchable search/*.csv shards, and AGENTS.md for ChatGPT.
   Scraping lives in chesignup/yad2-scraper. When a live check finds an ad gone or
   sold, mark listing_status=assumed_sold; if still up, mark active and refresh
-  date_last_seen_active (stale last_seen alone is not sold).
+  date_last_seen_active (stale last_seen alone is not sold). Also holds office
+  rentals under offices/ (sqm + description; Yad2 commercial + Facebook).
 ---
 
 # Yad2 listings (data)
@@ -18,6 +19,11 @@ Scraper: https://github.com/chesignup/yad2-scraper
 - Lookup: `python3 scripts/lookup_listing.py TOKEN` or `--street גולומב`
 - Past deals: `past_deals/` + enriched `past_deals_verdict`
 - Agents: read `AGENTS.md`
+- **Offices (rent):** `offices/listings_geo.json` — sqm + description; cities TLV / BB / PT / RG / Givatayim
+  - FB: `offices/facebook/facebook_office_rentals.json`
+  - Refresh: `yad2-scraper/scripts/hourly_office_rent_upsert.py`
+- **FB apartment groups:** `facebook/groups/` — whole-place rent+sale from RG/Givatayim groups
+  (no roommates/sublets); scraper `mac-listings/scripts/scrape_fb_groups_rentals.py`
 
 ## Live status affirmation (sold vs active) — REQUIRED
 

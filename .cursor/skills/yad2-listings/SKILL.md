@@ -22,6 +22,8 @@ Scraper: https://github.com/chesignup/yad2-scraper
 - **Offices (rent):** `offices/listings_geo.json` — sqm + description; cities TLV / BB / PT / RG / Givatayim
   - FB: `offices/facebook/facebook_office_rentals.json`
   - Refresh: `yad2-scraper/scripts/hourly_office_rent_upsert.py`
+- **FB apartment groups:** `facebook/groups/` — whole-place rent+sale from RG/Givatayim groups
+  (no roommates/sublets); scraper `mac-listings/scripts/scrape_fb_groups_rentals.py`
 
 ## Live status affirmation (sold vs active) — REQUIRED
 

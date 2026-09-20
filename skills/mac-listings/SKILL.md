@@ -32,3 +32,11 @@ python3 scripts/scrape_fb_realestate.py --query 'תל אביב' --max-items 40
 ```
 
 Writes `yad2-listings/facebook/facebook_realestate_listings.json`.
+
+Apartment Facebook **groups** (whole-place rent+sale, no roommates/sublets):
+
+```bash
+python3 scripts/scrape_fb_groups_rentals.py --cdp-base http://127.0.0.1:9222
+```
+
+→ `yad2-listings/facebook/groups/` (also merges `facebook_links` onto matched Yad2 rows).

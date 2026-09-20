@@ -73,6 +73,20 @@ python3 /home/s/opt/mac-listings/scrape/scrape_marketplace.py \
 `listing_type` will be `rent` / `sale` / `macbook` / `marketplace_item`.
 `origin` is always `facebook`.
 
+## Scrape apartment groups (rent + sale, whole-place only)
+
+Ramat Gan / Givatayim Facebook groups — skips roommates/שותפים and sublets/סאבלט.
+Matches Yad2 rent/sale by street+house and attaches both links.
+
+```bash
+# → yad2-listings/facebook/groups/
+python3 /home/s/opt/mac-listings/scripts/scrape_fb_groups_rentals.py \
+  --cdp-base http://127.0.0.1:9222 --max-scrolls 8 --max-posts 40
+```
+
+Groups: `520940308003364`, `1424244737803677`.
+Outputs: `facebook_group_listings.json` (+ rent/sale splits). Matched Yad2 rows get `facebook_links`.
+
 ## Scrape office rentals
 
 ```bash
