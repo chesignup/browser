@@ -36,7 +36,9 @@ Writes `yad2-listings/facebook/facebook_realestate_listings.json`.
 Apartment Facebook **groups** (whole-place rent+sale, no roommates/sublets):
 
 ```bash
-python3 scripts/scrape_fb_groups_rentals.py --cdp-base http://127.0.0.1:9222
+python3 scripts/scrape_fb_groups_rentals.py --cdp-base http://127.0.0.1:11222
 ```
+
+Hourly timer runs this after MacBook upsert (Chromebox FB session; does not steal the Yad2 tab).
 
 → `yad2-listings/facebook/groups/` (also merges `facebook_links` onto matched Yad2 rows).

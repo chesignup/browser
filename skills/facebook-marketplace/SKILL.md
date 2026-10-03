@@ -78,13 +78,16 @@ python3 /home/s/opt/mac-listings/scrape/scrape_marketplace.py \
 Ramat Gan / Givatayim Facebook groups — skips roommates/שותפים and sublets/סאבלט.
 Matches Yad2 rent/sale by street+house and attaches both links.
 
+Hourly Mac upsert also scrapes these groups into `yad2-listings/facebook/groups/`.
+
 ```bash
 # → yad2-listings/facebook/groups/
 python3 /home/s/opt/mac-listings/scripts/scrape_fb_groups_rentals.py \
-  --cdp-base http://127.0.0.1:9222 --max-scrolls 8 --max-posts 40
+  --cdp-base http://127.0.0.1:11222 --max-scrolls 8 --max-posts 40
 ```
 
-Groups: `520940308003364`, `1424244737803677`.
+Groups (13 joined Gush Dan boards): see `yad2-listings/facebook/groups/README.md`.
+Defaults include RG/Givatayim rent+sale + Neve Avivim; skips roommates/sublets.
 Outputs: `facebook_group_listings.json` (+ rent/sale splits). Matched Yad2 rows get `facebook_links`.
 
 ## Scrape office rentals

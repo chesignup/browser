@@ -74,11 +74,11 @@ Not Tel Aviv only. `SCRAPE_MODE=tma38_muni` / daily timer `yad2-scraper-tma38-mu
 | City | Source | Notes |
 |------|--------|--------|
 | Tel Aviv | ArcGIS IView2 layer **772** HTTP | `building_stage`; harvest upserts `muni:tlv:772:…` |
-| Ramat Gan | Complot `site_id=3` | HTTP then **Chromebox CDP** `fetch` / `Network.loadNetworkResource` (never Yad2 tab) |
-| Givatayim | Complot `site_id=98` | same CDP fallback |
-| Petah Tikva | ArcGIS addresses + Complot `site_id=84` | GIS alone is not auto-applied; permit text is |
-| Kiryat Ono | Bartech street JSON | permit tables need reCAPTCHA — street-only is not auto-applied |
-| Bnei Brak | Complot `site_id=75` | same as Ramat Gan |
+| Ramat Gan | Complot `site_id=3` | `tikbinyan` + `iturbakashot`. Status = **GetBakashotByTik** (grp+t+k), not tikim table. HTTP then Chromebox CDP `fetch` (never Yad2 tab). XPA 429 → keep public `#building`/`#search` URL, do not hammer |
+| Givatayim | Complot `site_id=98` | `gtm/request-search.min.htm?siteid=98` same programs |
+| Petah Tikva | ArcGIS addresses + Complot `site_id=84` | GIS alone is not auto-applied; bakasha סטטוס is |
+| Kiryat Ono | Bartech street JSON | **not Complot**; permit tables need reCAPTCHA — street-only is not auto-applied |
+| Bnei Brak | Complot `site_id=75` | generic Handasi `#building/{tik}`; muni `/handasa/` is not the widget |
 
 ```bash
 python3 -m municipal_progress.enrich --apply --re-evaluate
