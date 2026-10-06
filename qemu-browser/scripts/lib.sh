@@ -33,7 +33,19 @@ qemu_running() {
 }
 
 tunnel_running() {
-  [[ -f "${TUNNEL_PID}" ]] && kill -0 "$(cat "${TUNNEL_PID}")" 2>/dev/null
+  # Prefer pidfile if we can signal it; fall back to a live forwarder / CDP probe.
+  # Root-owned tunnels (e.g. from chromebox-watch) fail kill -0 for user `s`.
+  if [[ -f "${TUNNEL_PID}" ]]; then
+    local pid
+    pid="$(cat "${TUNNEL_PID}" 2>/dev/null || true)"
+    if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
+      return 0
+    fi
+  fi
+  if pgrep -f "ssh.*-L 127.0.0.1:${CDP_HOST_PORT}:127.0.0.1:${GUEST_CDP_PORT}" >/dev/null 2>&1; then
+    return 0
+  fi
+  curl -fsS -m 2 "http://127.0.0.1:${CDP_HOST_PORT}/json/version" >/dev/null 2>&1
 }
 
 ssh_guest() {
